@@ -3,7 +3,8 @@ import { config } from "./config.js";
 
 export const pool = new pg.Pool({
   connectionString: config.databaseUrl,
-  max: 12
+  max: 12,
+  ssl: config.nodeEnv === "production" ? { rejectUnauthorized: false } : false
 });
 
 export async function query(text, params = []) {

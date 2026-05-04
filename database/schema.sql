@@ -21,7 +21,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   email text NOT NULL UNIQUE,
@@ -32,7 +32,7 @@ CREATE TABLE users (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE driver_profiles (
+CREATE TABLE IF NOT EXISTS driver_profiles (
   user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   vehicle_make text NOT NULL,
   vehicle_model text NOT NULL,
@@ -45,10 +45,10 @@ CREATE TABLE driver_profiles (
   last_location_at timestamptz
 );
 
-CREATE INDEX driver_profiles_location_idx ON driver_profiles USING gist(last_location);
-CREATE INDEX driver_profiles_online_idx ON driver_profiles(online, verification_status);
+CREATE INDEX IF NOT EXISTS driver_profiles_location_idx ON driver_profiles USING gist(last_location);
+CREATE INDEX IF NOT EXISTS driver_profiles_online_idx ON driver_profiles(online, verification_status);
 
-CREATE TABLE fare_rules (
+CREATE TABLE IF NOT EXISTS fare_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   city text NOT NULL DEFAULT 'Mi localidad',
   base_fare numeric(12,2) NOT NULL DEFAULT 900,
@@ -60,7 +60,7 @@ CREATE TABLE fare_rules (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE trips (
+CREATE TABLE IF NOT EXISTS trips (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   passenger_id uuid NOT NULL REFERENCES users(id),
   driver_id uuid REFERENCES users(id),
@@ -82,12 +82,12 @@ CREATE TABLE trips (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX trips_pickup_location_idx ON trips USING gist(pickup_location);
-CREATE INDEX trips_status_idx ON trips(status, created_at DESC);
-CREATE INDEX trips_driver_idx ON trips(driver_id, status);
-CREATE INDEX trips_passenger_idx ON trips(passenger_id, status);
+CREATE INDEX IF NOT EXISTS trips_pickup_location_idx ON trips USING gist(pickup_location);
+CREATE INDEX IF NOT EXISTS trips_status_idx ON trips(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS trips_driver_idx ON trips(driver_id, status);
+CREATE INDEX IF NOT EXISTS trips_passenger_idx ON trips(passenger_id, status);
 
-CREATE TABLE trip_locations (
+CREATE TABLE IF NOT EXISTS trip_locations (
   id bigserial PRIMARY KEY,
   trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
   driver_id uuid NOT NULL REFERENCES users(id),
@@ -97,10 +97,10 @@ CREATE TABLE trip_locations (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX trip_locations_trip_idx ON trip_locations(trip_id, created_at DESC);
-CREATE INDEX trip_locations_location_idx ON trip_locations USING gist(location);
+CREATE INDEX IF NOT EXISTS trip_locations_trip_idx ON trip_locations(trip_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS trip_locations_location_idx ON trip_locations USING gist(location);
 
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
   provider text NOT NULL,
@@ -114,10 +114,10 @@ CREATE TABLE payments (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX payments_provider_reference_idx ON payments(provider_reference) WHERE provider_reference IS NOT NULL;
-CREATE INDEX payments_trip_idx ON payments(trip_id);
+CREATE UNIQUE INDEX IF NOT EXISTS payments_provider_reference_idx ON payments(provider_reference) WHERE provider_reference IS NOT NULL;
+CREATE INDEX IF NOT EXISTS payments_trip_idx ON payments(trip_id);
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id bigserial PRIMARY KEY,
   actor_id uuid REFERENCES users(id),
   action text NOT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE audit_logs (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE webhook_events (
+CREATE TABLE IF NOT EXISTS webhook_events (
   id text PRIMARY KEY,
   provider text NOT NULL,
   topic text NOT NULL,
