@@ -1,0 +1,149 @@
+import { Router } from "express";
+import { z } from "zod";
+import { query, transaction } from "../db.js";
+import { HttpError } from "../errors.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
+import { audit } from "../services/audit.js";
+import { estimateFare } from "../services/fare.js";
+import { assignNearestDriver } from "../services/driverMatcher.js";
+import { broadcastTrip } from "../realtime.js";
+
+export const tripsRouter = Router();
+
+const pointSchema = z.object({
+  address: z.string().min(3),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180)
+});
+
+tripsRouter.post("/estimate", requireAuth, async (req, res) => {
+  const input = z.object({ pickup: pointSchema, dropoff: pointSchema }).parse(req.body);
+  res.json({ estimate: await estimateFare(input) });
+});
+
+tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), async (req, res) => {
+  const input = z.object({
+    pickup: pointSchema,
+    dropoff: pointSchema,
+    paymentMethod: z.enum(["mercado_pago", "cash"]),
+    note: z.string().max(500).optional()
+  }).parse(req.body);
+
+  const estimate = await estimateFare(input);
+
+  const trip = await transaction(async (client) => {
+    const driverId = await assignNearestDriver({ lat: input.pickup.lat, lng: input.pickup.lng, client });
+    const status = driverId ? "accepted" : "requested";
+
+    const result = await client.query(
+      `INSERT INTO trips(
+         passenger_id, driver_id, status, pickup_address, dropoff_address,
+         pickup_location, dropoff_location, distance_meters, duration_seconds,
+         fare_amount, platform_fee, payment_method, accepted_at
+       )
+       VALUES (
+         $1, $2, $3, $4, $5,
+         ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography,
+         ST_SetSRID(ST_MakePoint($8, $9), 4326)::geography,
+         $10, $11, $12, $13, $14,
+         CASE WHEN $2::uuid IS NULL THEN NULL ELSE now() END
+       )
+       RETURNING *`,
+      [
+        req.user.sub,
+        driverId,
+        status,
+        input.pickup.address,
+        input.dropoff.address,
+        input.pickup.lng,
+        input.pickup.lat,
+        input.dropoff.lng,
+        input.dropoff.lat,
+        estimate.distanceMeters,
+        estimate.durationSeconds,
+        estimate.amount,
+        estimate.platformFee,
+        input.paymentMethod
+      ]
+    );
+
+    return result.rows[0];
+  });
+
+  await audit({ actorId: req.user.sub, action: "trip.create", entityType: "trip", entityId: trip.id, metadata: { note: input.note || null }, ip: req.ip });
+  broadcastTrip(trip.id, { type: "trip.updated", trip });
+  res.status(201).json({ trip });
+});
+
+tripsRouter.get("/active", requireAuth, async (req, res) => {
+  const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
+  const result = await query(
+    `SELECT * FROM trips
+     WHERE ${column} = $1 AND status IN ('requested', 'accepted', 'driver_arriving', 'in_progress')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [req.user.sub]
+  );
+  res.json({ trip: result.rows[0] || null });
+});
+
+tripsRouter.patch("/:id/status", requireAuth, async (req, res) => {
+  const input = z.object({
+    status: z.enum(["accepted", "driver_arriving", "in_progress", "completed", "cancelled"]),
+    cancellationReason: z.string().max(300).optional()
+  }).parse(req.body);
+
+  const current = await query("SELECT * FROM trips WHERE id = $1", [req.params.id]);
+  const trip = current.rows[0];
+  if (!trip) throw new HttpError(404, "Viaje no encontrado");
+
+  const isPassenger = trip.passenger_id === req.user.sub;
+  const isDriver = trip.driver_id === req.user.sub;
+  const isAdmin = req.user.role === "admin";
+  if (!isPassenger && !isDriver && !isAdmin) throw new HttpError(403, "No podes modificar este viaje");
+
+  const result = await query(
+    `UPDATE trips
+     SET status = $2,
+         cancellation_reason = CASE WHEN $2 = 'cancelled' THEN $3 ELSE cancellation_reason END,
+         started_at = CASE WHEN $2 = 'in_progress' THEN now() ELSE started_at END,
+         completed_at = CASE WHEN $2 IN ('completed', 'cancelled') THEN now() ELSE completed_at END,
+         updated_at = now()
+     WHERE id = $1
+     RETURNING *`,
+    [req.params.id, input.status, input.cancellationReason || null]
+  );
+
+  await audit({ actorId: req.user.sub, action: `trip.${input.status}`, entityType: "trip", entityId: req.params.id, metadata: input, ip: req.ip });
+  broadcastTrip(req.params.id, { type: "trip.updated", trip: result.rows[0] });
+  res.json({ trip: result.rows[0] });
+});
+
+tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), async (req, res) => {
+  const input = z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    heading: z.number().min(0).max(360).optional(),
+    speedKmh: z.number().min(0).max(220).optional()
+  }).parse(req.body);
+
+  const tripResult = await query("SELECT * FROM trips WHERE id = $1 AND driver_id = $2", [req.params.id, req.user.sub]);
+  if (!tripResult.rows[0]) throw new HttpError(404, "Viaje activo no encontrado para este conductor");
+
+  await query(
+    `INSERT INTO trip_locations(trip_id, driver_id, location, heading, speed_kmh)
+     VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
+    [req.params.id, req.user.sub, input.lng, input.lat, input.heading || null, input.speedKmh || null]
+  );
+  await query(
+    `UPDATE driver_profiles
+     SET last_location = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+         last_location_at = now()
+     WHERE user_id = $1`,
+    [req.user.sub, input.lng, input.lat]
+  );
+
+  const payload = { type: "driver.location", tripId: req.params.id, location: input, at: new Date().toISOString() };
+  broadcastTrip(req.params.id, payload);
+  res.status(201).json(payload);
+});

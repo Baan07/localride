@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LocalRide - Pedidos de coches locales</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand">
+          <span class="brand-mark">LR</span>
+          <div>
+            <strong>LocalRide</strong>
+            <small>Movilidad local</small>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-item active" data-view="ride" type="button" title="Pedir coche">
+            <span>🚘</span>
+            <span>Pedir</span>
+          </button>
+          <button class="nav-item" data-view="track" type="button" title="Seguimiento">
+            <span>📍</span>
+            <span>Seguimiento</span>
+          </button>
+          <button class="nav-item" data-view="driver" type="button" title="Conductores">
+            <span>🪪</span>
+            <span>Conductor</span>
+          </button>
+          <button class="nav-item" data-view="payments" type="button" title="Pagos">
+            <span>💳</span>
+            <span>Pagos</span>
+          </button>
+          <button class="nav-item" data-view="admin" type="button" title="Panel local">
+            <span>⚙</span>
+            <span>Panel</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span class="status-dot"></span>
+          <span id="serviceStatus">Servicio activo</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Ciudad configurada</p>
+            <h1 id="cityName">Mi localidad</h1>
+          </div>
+          <div class="top-actions">
+            <button class="icon-button" id="panicButton" type="button" title="Boton de seguridad">!</button>
+            <button class="primary-action" id="quickRideButton" type="button">Pedir ahora</button>
+          </div>
+        </header>
+
+        <section class="view active" id="rideView" aria-label="Pedir coche">
+          <div class="map-band">
+            <div class="map-grid" id="mapGrid" aria-label="Mapa simulado de la localidad"></div>
+            <div class="map-overlay">
+              <strong id="mapTitle">Coches cerca</strong>
+              <span id="mapSubtitle">Elige origen y destino para calcular tarifa</span>
+            </div>
+          </div>
+
+          <div class="work-grid">
+            <section class="panel request-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Nuevo viaje</p>
+                  <h2>Pedir coche</h2>
+                </div>
+                <span class="pill" id="etaPill">ETA 4 min</span>
+              </div>
+
+              <form id="rideForm" class="form-grid">
+                <label>
+                  Origen
+                  <input id="pickup" name="pickup" autocomplete="street-address" placeholder="Ej. Plaza principal" required />
+                </label>
+                <label>
+                  Destino
+                  <input id="dropoff" name="dropoff" placeholder="Ej. Terminal / barrio / comercio" required />
+                </label>
+                <label>
+                  Tipo de coche
+                  <select id="carType" name="carType">
+                    <option value="economy">Economico</option>
+                    <option value="comfort">Comfort</option>
+                    <option value="xl">XL familiar</option>
+                    <option value="moto">Moto</option>
+                  </select>
+                </label>
+                <label>
+                  Pasajeros
+                  <input id="passengers" name="passengers" type="number" min="1" max="6" value="1" />
+                </label>
+                <label>
+                  Pago
+                  <select id="paymentMethod" name="paymentMethod">
+                    <option value="mercado-pago">Mercado Pago</option>
+                    <option value="cash">Efectivo</option>
+                    <option value="card">Tarjeta registrada</option>
+                  </select>
+                </label>
+                <label>
+                  Nota para el conductor
+                  <input id="note" name="note" placeholder="Porton azul, equipaje, mascota..." />
+                </label>
+                <div class="fare-box">
+                  <div>
+                    <span>Tarifa estimada</span>
+                    <strong id="fareEstimate">$ 0</strong>
+                  </div>
+                  <div>
+                    <span>Distancia</span>
+                    <strong id="distanceEstimate">0 km</strong>
+                  </div>
+                  <div>
+                    <span>Demanda</span>
+                    <strong id="surgeEstimate">Normal</strong>
+                  </div>
+                </div>
+                <button class="primary-action wide" type="submit">Confirmar pedido</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Disponibles</p>
+                  <h2>Conductores cercanos</h2>
+                </div>
+                <button class="ghost-button" id="refreshDrivers" type="button">Actualizar</button>
+              </div>
+              <div class="driver-list" id="driverList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="trackView" aria-label="Seguimiento del viaje">
+          <div class="split-layout">
+            <section class="panel tracker-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Viaje activo</p>
+                  <h2 id="tripStatusTitle">Sin pedido activo</h2>
+                </div>
+                <span class="pill" id="tripCode">---</span>
+              </div>
+              <div class="route-timeline" id="routeTimeline"></div>
+              <div class="progress-shell">
+                <div class="progress-bar" id="tripProgress"></div>
+              </div>
+              <div class="tracking-actions">
+                <button class="secondary-action" id="messageDriver" type="button">Mensaje</button>
+                <button class="secondary-action" id="callDriver" type="button">Llamar</button>
+                <button class="danger-action" id="cancelTrip" type="button">Cancelar</button>
+              </div>
+            </section>
+
+            <section class="panel receipt-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Detalle</p>
+                  <h2>Resumen del viaje</h2>
+                </div>
+              </div>
+              <dl class="receipt" id="receipt"></dl>
+              <div class="rating-row" aria-label="Calificacion del viaje">
+                <button type="button" data-star="1">★</button>
+                <button type="button" data-star="2">★</button>
+                <button type="button" data-star="3">★</button>
+                <button type="button" data-star="4">★</button>
+                <button type="button" data-star="5">★</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="driverView" aria-label="Modo conductor">
+          <div class="work-grid">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Modo conductor</p>
+                  <h2>Estado de disponibilidad</h2>
+                </div>
+                <label class="switch">
+                  <input id="driverOnline" type="checkbox" checked />
+                  <span></span>
+                </label>
+              </div>
+              <form id="driverForm" class="form-grid">
+                <label>
+                  Nombre
+                  <input id="driverName" value="Conductor local" />
+                </label>
+                <label>
+                  Vehiculo
+                  <input id="driverCar" value="Chevrolet Onix gris" />
+                </label>
+                <label>
+                  Patente
+                  <input id="driverPlate" value="LR 204" />
+                </label>
+                <label>
+                  Zona
+                  <input id="driverZone" value="Centro" />
+                </label>
+                <button class="primary-action wide" type="submit">Guardar perfil</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Pedidos</p>
+                  <h2>Solicitudes entrantes</h2>
+                </div>
+              </div>
+              <div class="request-feed" id="requestFeed"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="paymentsView" aria-label="Pagos">
+          <div class="split-layout">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Mercado Pago</p>
+                  <h2>Configuracion de cobro</h2>
+                </div>
+                <span class="pill">Demo</span>
+              </div>
+              <form id="paymentConfig" class="form-grid">
+                <label>
+                  Public Key
+                  <input id="mpPublicKey" placeholder="APP_USR-..." />
+                </label>
+                <label>
+                  Access Token
+                  <input id="mpAccessToken" placeholder="Guardar solo en backend real" />
+                </label>
+                <label>
+                  URL webhook
+                  <input id="webhookUrl" placeholder="https://tudominio.com/api/mp/webhook" />
+                </label>
+                <label>
+                  Comision de plataforma (%)
+                  <input id="platformFee" type="number" min="0" max="50" value="12" />
+                </label>
+                <button class="primary-action wide" type="submit">Guardar configuracion</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Caja</p>
+                  <h2>Movimientos</h2>
+                </div>
+              </div>
+              <div class="payment-list" id="paymentList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="adminView" aria-label="Panel de administracion">
+          <div class="admin-grid">
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Localidad</p>
+                  <h2>Ajustes operativos</h2>
+                </div>
+              </div>
+              <form id="adminForm" class="form-grid">
+                <label>
+                  Nombre de la localidad
+                  <input id="adminCity" value="Mi localidad" />
+                </label>
+                <label>
+                  Tarifa base
+                  <input id="baseFare" type="number" min="0" value="900" />
+                </label>
+                <label>
+                  Precio por km
+                  <input id="kmFare" type="number" min="0" value="420" />
+                </label>
+                <label>
+                  Minutos de espera incluidos
+                  <input id="waitMinutes" type="number" min="0" value="3" />
+                </label>
+                <button class="primary-action wide" type="submit">Aplicar cambios</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Control</p>
+                  <h2>Metricas del dia</h2>
+                </div>
+              </div>
+              <div class="metrics" id="metrics"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

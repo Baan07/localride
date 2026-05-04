@@ -1,0 +1,21 @@
+{
+  "name": "localride-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Plataforma local tipo Uber con React, Express, PostgreSQL/PostGIS, WebSocket y Mercado Pago.",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace backend",
+    "db:migrate": "npm run db:migrate --workspace backend",
+    "db:seed": "npm run db:seed --workspace backend",
+    "check": "npm run check --workspace backend && npm run check --workspace frontend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
