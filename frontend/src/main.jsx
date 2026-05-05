@@ -527,11 +527,17 @@ function TripHistory({ trips }) {
 function DriverView({ session }) {
   const [online, setOnline] = useState(false);
   const [trip, setTrip] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
   const disabled = session.user.role !== "driver";
 
   useEffect(() => {
-    if (!disabled) loadDriverTrip();
+    if (!disabled) {
+      loadDriverTrip();
+      loadRequests();
+      const timer = setInterval(loadRequests, 12000);
+      return () => clearInterval(timer);
+    }
   }, [disabled]);
 
   async function updateAvailability(next) {
@@ -545,6 +551,7 @@ function DriverView({ session }) {
       });
       setMessage(next ? "Conductor online." : "Conductor fuera de linea.");
       await loadDriverTrip();
+      await loadRequests();
     } catch (err) {
       setMessage(err.message);
     }
@@ -554,6 +561,29 @@ function DriverView({ session }) {
     try {
       const data = await api("/api/trips/active", { token: session.token });
       setTrip(data.trip);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function loadRequests() {
+    try {
+      const data = await api("/api/trips/driver/requests", { token: session.token });
+      setRequests(data.trips || []);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function acceptRequest(tripId) {
+    try {
+      const data = await api(`/api/trips/${tripId}/accept`, {
+        method: "POST",
+        token: session.token
+      });
+      setTrip(data.trip);
+      setMessage("Pedido aceptado.");
+      await loadRequests();
     } catch (err) {
       setMessage(err.message);
     }
@@ -605,8 +635,22 @@ function DriverView({ session }) {
             {online ? "Salir de linea" : "Ponerme online"}
           </button>
           <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
+          <button className="secondary" onClick={loadRequests}>Ver pedidos</button>
           <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
+          <div className="request-box">
+            <strong>Pedidos disponibles</strong>
+            {requests.length === 0 && <span>No hay pedidos pendientes.</span>}
+            {requests.map((request) => (
+              <article className="request-item" key={request.id}>
+                <div>
+                  <strong>{request.pickup_address} a {request.dropoff_address}</strong>
+                  <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)}</span>
+                </div>
+                <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
+              </article>
+            ))}
+          </div>
           {trip ? (
             <>
               <dl className="receipt">

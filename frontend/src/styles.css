@@ -369,6 +369,33 @@ select {
   font-size: 13px;
   margin-top: 4px;
 }
+.request-box {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+.request-box > span {
+  color: #667085;
+}
+.request-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+.request-item strong,
+.request-item span {
+  display: block;
+}
+.request-item span {
+  color: #667085;
+  font-size: 13px;
+  margin-top: 4px;
+}
 
 @media (max-width: 980px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -419,6 +446,7 @@ select {
     padding: 16px;
   }
   .admin-item,
+  .request-item,
   .history-item,
   .section-row {
     align-items: stretch;

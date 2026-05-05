@@ -5,7 +5,6 @@ import { HttpError, asyncHandler } from "../errors.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 import { estimateFare } from "../services/fare.js";
-import { assignNearestDriver } from "../services/driverMatcher.js";
 import { broadcastTrip } from "../realtime.js";
 
 export const tripsRouter = Router();
@@ -38,9 +37,6 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
   const estimate = await estimateFare(input);
 
   const trip = await transaction(async (client) => {
-    const driverId = await assignNearestDriver({ lat: input.pickup.lat, lng: input.pickup.lng, client });
-    const status = driverId ? "accepted" : "requested";
-
     const result = await client.query(
       `INSERT INTO trips(
          passenger_id, driver_id, status, pickup_address, dropoff_address,
@@ -48,17 +44,15 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
          fare_amount, platform_fee, payment_method, accepted_at
        )
        VALUES (
-         $1, $2, $3, $4, $5,
+         $1, NULL, 'requested', $2, $3,
+         ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
          ST_SetSRID(ST_MakePoint($6, $7), 4326)::geography,
-         ST_SetSRID(ST_MakePoint($8, $9), 4326)::geography,
-         $10, $11, $12, $13, $14,
-         CASE WHEN $2::uuid IS NULL THEN NULL ELSE now() END
+         $8, $9, $10, $11, $12,
+         NULL
        )
        RETURNING *`,
       [
         req.user.sub,
-        driverId,
-        status,
         input.pickup.address,
         input.dropoff.address,
         input.pickup.lng,
@@ -79,6 +73,39 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
   await audit({ actorId: req.user.sub, action: "trip.create", entityType: "trip", entityId: trip.id, metadata: { note: input.note || null }, ip: req.ip });
   broadcastTrip(trip.id, { type: "trip.updated", trip });
   res.status(201).json({ trip });
+}));
+
+tripsRouter.get("/driver/requests", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, created_at
+     FROM trips
+     WHERE status = 'requested'
+       AND driver_id IS NULL
+     ORDER BY created_at ASC
+     LIMIT 20`
+  );
+  res.json({ trips: result.rows });
+}));
+
+tripsRouter.post("/:id/accept", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `UPDATE trips
+     SET driver_id = $2,
+         status = 'accepted',
+         accepted_at = now(),
+         updated_at = now()
+     WHERE id = $1
+       AND status = 'requested'
+       AND driver_id IS NULL
+     RETURNING *`,
+    [req.params.id, req.user.sub]
+  );
+
+  if (!result.rows[0]) throw new HttpError(409, "Este pedido ya fue tomado o no esta disponible");
+
+  await audit({ actorId: req.user.sub, action: "trip.accept", entityType: "trip", entityId: req.params.id, ip: req.ip });
+  broadcastTrip(req.params.id, { type: "trip.updated", trip: result.rows[0] });
+  res.json({ trip: result.rows[0] });
 }));
 
 tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
