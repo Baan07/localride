@@ -23,27 +23,43 @@ paymentsRouter.post("/checkout-pro", requireAuth, asyncHandler(async (req, res) 
   if (trip.payment_method !== "mercado_pago") throw new HttpError(422, "El viaje no usa Mercado Pago");
 
   const preference = new Preference(mercadoPagoClient());
-  const response = await preference.create({
-    body: {
-      external_reference: trip.id,
-      notification_url: `${config.publicBaseUrl}/api/payments/webhooks/mercado-pago?source_news=webhooks`,
-      back_urls: {
-        success: `${config.frontendUrl}/payments/success`,
-        failure: `${config.frontendUrl}/payments/failure`,
-        pending: `${config.frontendUrl}/payments/pending`
-      },
-      auto_return: "approved",
-      items: [
-        {
-          id: trip.id,
-          title: `Viaje LocalRide ${trip.pickup_address} - ${trip.dropoff_address}`,
-          quantity: 1,
-          currency_id: "ARS",
-          unit_price: Number(trip.fare_amount)
-        }
-      ]
-    }
-  });
+  let response;
+  try {
+    response = await preference.create({
+      body: {
+        external_reference: trip.id,
+        notification_url: `${config.publicBaseUrl}/api/payments/webhooks/mercado-pago?source_news=webhooks`,
+        back_urls: {
+          success: `${config.frontendUrl}/payments/success`,
+          failure: `${config.frontendUrl}/payments/failure`,
+          pending: `${config.frontendUrl}/payments/pending`
+        },
+        items: [
+          {
+            id: trip.id,
+            title: `Viaje LocalRide ${trip.pickup_address} - ${trip.dropoff_address}`,
+            quantity: 1,
+            currency_id: "ARS",
+            unit_price: Number(trip.fare_amount)
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    const mpMessage = error?.message || error?.cause?.message || "Mercado Pago rechazo la preferencia";
+    console.error("Mercado Pago preference failed", {
+      message: mpMessage,
+      status: error?.status,
+      cause: error?.cause,
+      details: error?.details
+    });
+    throw new HttpError(502, `Mercado Pago: ${mpMessage}`);
+  }
+
+  if (!response.init_point && !response.sandbox_init_point) {
+    console.error("Mercado Pago preference without checkout URL", response);
+    throw new HttpError(502, "Mercado Pago no devolvio URL de checkout");
+  }
 
   await query(
     `INSERT INTO payments(trip_id, provider, preference_id, init_point, status, amount, raw_payload)
