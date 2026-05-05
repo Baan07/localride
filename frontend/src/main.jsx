@@ -424,7 +424,15 @@ function TrackView({ session }) {
     const ws = new WebSocket(`${WS_URL}/ws?token=${session.token}&tripId=${trip.id}`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === "trip.updated") setTrip(data.trip);
+      if (data.type === "trip.updated") {
+        if (data.trip?.status === "completed") {
+          setLastCompletedTrip(data.trip);
+          setTrip(null);
+          localStorage.setItem("localride-last-completed-trip-id", data.trip.id);
+        } else {
+          setTrip(data.trip);
+        }
+      }
       if (data.type === "driver.location") setLocation(data.location);
     };
     return () => ws.close();
