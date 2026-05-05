@@ -16,8 +16,13 @@ const pointSchema = z.object({
   lng: z.number().min(-180).max(180)
 });
 
+const routeSchema = z.object({
+  distanceMeters: z.number().min(1),
+  durationSeconds: z.number().min(1)
+}).optional();
+
 tripsRouter.post("/estimate", requireAuth, asyncHandler(async (req, res) => {
-  const input = z.object({ pickup: pointSchema, dropoff: pointSchema }).parse(req.body);
+  const input = z.object({ pickup: pointSchema, dropoff: pointSchema, route: routeSchema }).parse(req.body);
   res.json({ estimate: await estimateFare(input) });
 }));
 
@@ -25,6 +30,7 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
   const input = z.object({
     pickup: pointSchema,
     dropoff: pointSchema,
+    route: routeSchema,
     paymentMethod: z.enum(["mercado_pago", "cash"]),
     note: z.string().max(500).optional()
   }).parse(req.body);

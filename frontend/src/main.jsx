@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Car, CreditCard, LayoutDashboard, LocateFixed, LogOut, MapPin, ShieldCheck, UserRound } from "lucide-react";
-import { MapContainer, Marker, Popup, TileLayer, Polyline, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, Polyline, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
 
@@ -11,6 +11,8 @@ const defaultCenter = [
   Number(import.meta.env.VITE_DEFAULT_LAT || -38.9931),
   Number(import.meta.env.VITE_DEFAULT_LNG || -64.0942)
 ];
+const rioColoradoViewbox = "-64.22,-38.90,-63.98,-39.08";
+const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 
 function api(path, { token, ...options } = {}) {
   return fetch(`${API_URL}${path}`, {
@@ -120,6 +122,7 @@ function RideView({ session, goTrack }) {
   const [dropoff, setDropoff] = useState({ address: "Terminal", lat: defaultCenter[0] + 0.012, lng: defaultCenter[1] + 0.012 });
   const [drivers, setDrivers] = useState([]);
   const [estimate, setEstimate] = useState(null);
+  const [route, setRoute] = useState(null);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -152,12 +155,31 @@ function RideView({ session, goTrack }) {
   }
 
   async function refreshEstimateFor(nextPickup, nextDropoff) {
+    const nextRoute = await fetchRoute(nextPickup, nextDropoff);
+    setRoute(nextRoute);
     const data = await api("/api/trips/estimate", {
       method: "POST",
       token: session.token,
-      body: JSON.stringify({ pickup: nextPickup, dropoff: nextDropoff })
+      body: JSON.stringify({
+        pickup: nextPickup,
+        dropoff: nextDropoff,
+        route: nextRoute ? { distanceMeters: nextRoute.distanceMeters, durationSeconds: nextRoute.durationSeconds } : undefined
+      })
     });
     setEstimate(data.estimate);
+  }
+
+  function selectPickup(place) {
+    const nextPickup = placeToPoint(place);
+    setPickup(nextPickup);
+    refreshNearbyAt(nextPickup);
+    refreshEstimateFor(nextPickup, dropoff);
+  }
+
+  function selectDropoff(place) {
+    const nextDropoff = placeToPoint(place);
+    setDropoff(nextDropoff);
+    refreshEstimateFor(pickup, nextDropoff);
   }
 
   async function createTrip(event) {
@@ -168,7 +190,12 @@ function RideView({ session, goTrack }) {
       const data = await api("/api/trips", {
         method: "POST",
         token: session.token,
-        body: JSON.stringify({ pickup, dropoff, paymentMethod: "mercado_pago" })
+        body: JSON.stringify({
+          pickup,
+          dropoff,
+          route: route ? { distanceMeters: route.distanceMeters, durationSeconds: route.durationSeconds } : undefined,
+          paymentMethod: "mercado_pago"
+        })
       });
       localStorage.setItem("localride-last-trip-id", data.trip.id);
 
@@ -193,18 +220,25 @@ function RideView({ session, goTrack }) {
   return (
     <section className="grid two">
       <div className="panel map-panel">
-        <RealMap pickup={pickup} dropoff={dropoff} drivers={drivers} onPickup={setPickup} onDropoff={setDropoff} />
+        <RealMap
+          pickup={pickup}
+          dropoff={dropoff}
+          route={route}
+          drivers={drivers}
+          onPickup={(point) => { setPickup(point); refreshNearbyAt(point); refreshEstimateFor(point, dropoff); }}
+          onDropoff={(point) => { setDropoff(point); refreshEstimateFor(pickup, point); }}
+        />
       </div>
       <div className="panel">
         <p className="eyebrow">Nuevo viaje</p>
         <h2>Pedir coche</h2>
         <form className="form-grid one" onSubmit={createTrip}>
-          <label>Origen<input value={pickup.address} onChange={(e) => setPickup({ ...pickup, address: e.target.value })} /></label>
-          <label>Destino<input value={dropoff.address} onChange={(e) => setDropoff({ ...dropoff, address: e.target.value })} /></label>
+          <AddressSearch label="Origen" value={pickup.address} onText={(address) => setPickup({ ...pickup, address })} onSelect={selectPickup} />
+          <AddressSearch label="Destino" value={dropoff.address} onText={(address) => setDropoff({ ...dropoff, address })} onSelect={selectDropoff} />
           <div className="fare-card">
             <span>Estimado</span>
             <strong>{estimate ? money(estimate.amount) : "Calculando..."}</strong>
-            <small>{estimate ? `${Math.round(estimate.distanceMeters / 100) / 10} km` : "PostGIS"}</small>
+            <small>{estimate ? `${Math.round(estimate.distanceMeters / 100) / 10} km por calles` : "Calculando ruta"}</small>
           </div>
           <button type="button" className="secondary" onClick={() => { refreshNearby(); refreshEstimate(); }}>Recalcular</button>
           <button className="primary">Confirmar y pagar con Mercado Pago</button>
@@ -215,14 +249,56 @@ function RideView({ session, goTrack }) {
   );
 }
 
-function RealMap({ pickup, dropoff, drivers, onPickup, onDropoff }) {
+function AddressSearch({ label, value, onText, onSelect }) {
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (value.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        setResults(await searchRioColorado(value));
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  return (
+    <label className="address-field">
+      {label}
+      <input value={value} onChange={(event) => onText(event.target.value)} placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado`} />
+      {(results.length > 0 || loading) && (
+        <div className="suggestions">
+          {loading && <span>Buscando calles...</span>}
+          {results.map((place) => (
+            <button key={place.place_id} type="button" onClick={() => { onSelect(place); setResults([]); }}>
+              {shortAddress(place)}
+            </button>
+          ))}
+        </div>
+      )}
+    </label>
+  );
+}
+
+function RealMap({ pickup, dropoff, route, drivers, onPickup, onDropoff }) {
   function MapClicks() {
     useMapEvents({
       click(event) {
-        onDropoff({ ...dropoff, lat: event.latlng.lat, lng: event.latlng.lng });
+        onDropoff({ ...dropoff, address: "Destino seleccionado en mapa", lat: event.latlng.lat, lng: event.latlng.lng });
       },
       contextmenu(event) {
-        onPickup({ ...pickup, lat: event.latlng.lat, lng: event.latlng.lng });
+        onPickup({ ...pickup, address: "Origen seleccionado en mapa", lat: event.latlng.lat, lng: event.latlng.lng });
       }
     });
     return null;
@@ -235,9 +311,10 @@ function RealMap({ pickup, dropoff, drivers, onPickup, onDropoff }) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <MapClicks />
+      <FitRoute pickup={pickup} dropoff={dropoff} route={route} />
       <Marker position={[pickup.lat, pickup.lng]}><Popup>Origen</Popup></Marker>
       <Marker position={[dropoff.lat, dropoff.lng]}><Popup>Destino</Popup></Marker>
-      <Polyline positions={[[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]]} />
+      {route?.coordinates?.length > 0 && <Polyline positions={route.coordinates} />}
       {drivers.map((driver) => (
         <Marker key={driver.id} position={[Number(driver.lat), Number(driver.lng)]}>
           <Popup>{driver.name} - {driver.vehicle_model}</Popup>
@@ -245,6 +322,17 @@ function RealMap({ pickup, dropoff, drivers, onPickup, onDropoff }) {
       ))}
     </MapContainer>
   );
+}
+
+function FitRoute({ pickup, dropoff, route }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points = route?.coordinates?.length ? route.coordinates : [[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]];
+    map.fitBounds(points, { padding: [38, 38], maxZoom: 15 });
+  }, [map, pickup.lat, pickup.lng, dropoff.lat, dropoff.lng, route]);
+
+  return null;
 }
 
 function TrackView({ session }) {
@@ -555,6 +643,64 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+async function searchRioColorado(query) {
+  const params = new URLSearchParams({
+    q: `${query}, Rio Colorado, Rio Negro, Argentina`,
+    format: "jsonv2",
+    addressdetails: "1",
+    countrycodes: "ar",
+    viewbox: rioColoradoViewbox,
+    bounded: "1",
+    limit: "6"
+  });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+  if (!response.ok) throw new Error("No se pudo buscar la direccion");
+  return response.json();
+}
+
+async function fetchRoute(pickup, dropoff) {
+  const coords = `${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}`;
+  const params = new URLSearchParams({
+    overview: "full",
+    geometries: "geojson",
+    steps: "false"
+  });
+
+  try {
+    const response = await fetch(`${OSRM_URL}/route/v1/driving/${coords}?${params.toString()}`);
+    if (!response.ok) throw new Error("Ruta no disponible");
+    const data = await response.json();
+    const route = data.routes?.[0];
+    if (!route?.geometry?.coordinates?.length) throw new Error("Ruta no encontrada");
+    return {
+      distanceMeters: route.distance,
+      durationSeconds: route.duration,
+      coordinates: route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+    };
+  } catch {
+    return null;
+  }
+}
+
+function placeToPoint(place) {
+  return {
+    address: shortAddress(place),
+    lat: Number(place.lat),
+    lng: Number(place.lon)
+  };
+}
+
+function shortAddress(place) {
+  const address = place.address || {};
+  const parts = [
+    address.road || address.pedestrian || address.amenity || address.name,
+    address.house_number,
+    address.suburb || address.neighbourhood,
+    address.town || address.city || "Rio Colorado"
+  ].filter(Boolean);
+  return parts.length ? parts.join(" ") : place.display_name;
 }
 
 function tripStatusLabel(status) {
