@@ -161,13 +161,31 @@ function RideView({ session, goTrack }) {
 
   async function createTrip(event) {
     event.preventDefault();
-    const data = await api("/api/trips", {
-      method: "POST",
-      token: session.token,
-      body: JSON.stringify({ pickup, dropoff, paymentMethod: "mercado_pago" })
-    });
-    setMessage(`Viaje creado: ${data.trip.status}`);
-    goTrack();
+    setMessage("Creando viaje...");
+
+    try {
+      const data = await api("/api/trips", {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({ pickup, dropoff, paymentMethod: "mercado_pago" })
+      });
+
+      try {
+        const preference = await api("/api/payments/checkout-pro", {
+          method: "POST",
+          token: session.token,
+          body: JSON.stringify({ tripId: data.trip.id })
+        });
+        const checkoutUrl = preference.initPoint || preference.sandboxInitPoint;
+        if (checkoutUrl) window.location.href = checkoutUrl;
+        else setMessage(`Viaje creado: ${data.trip.status}. Checkout sin URL disponible.`);
+      } catch (paymentError) {
+        setMessage(`Viaje creado: ${data.trip.status}. Mercado Pago: ${paymentError.message}`);
+        goTrack();
+      }
+    } catch (tripError) {
+      setMessage(tripError.message);
+    }
   }
 
   return (
