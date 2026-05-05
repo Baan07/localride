@@ -330,10 +330,10 @@ function TrackView({ session }) {
     <section className="grid two">
       <div className="panel">
         <p className="eyebrow">Seguimiento</p>
-        <h2>{trip.status}</h2>
+        <h2>{tripStatusLabel(trip.status)}</h2>
         <div className="status-list">
           {["requested", "accepted", "driver_arriving", "in_progress", "completed"].map((status) => (
-            <span key={status} className={trip.status === status ? "current" : ""}>{status}</span>
+            <span key={status} className={trip.status === status ? "current" : ""}>{tripStatusLabel(status)}</span>
           ))}
         </div>
         {session.user.role === "driver" ? (
@@ -431,7 +431,7 @@ function DriverView({ session }) {
         body: JSON.stringify({ status })
       });
       setTrip(data.trip);
-      setMessage(`Viaje actualizado: ${status}.`);
+      setMessage(`Viaje actualizado: ${tripStatusLabel(status)}.`);
     } catch (err) {
       setMessage(err.message);
     }
@@ -452,7 +452,7 @@ function DriverView({ session }) {
           {trip ? (
             <>
               <dl className="receipt">
-                <dt>Viaje</dt><dd>{trip.status}</dd>
+                <dt>Viaje</dt><dd>{tripStatusLabel(trip.status)}</dd>
                 <dt>Origen</dt><dd>{trip.pickup_address}</dd>
                 <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
                 <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
@@ -555,6 +555,17 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function tripStatusLabel(status) {
+  return {
+    requested: "Solicitado",
+    accepted: "Aceptado",
+    driver_arriving: "Conductor en camino",
+    in_progress: "Viaje iniciado",
+    completed: "Finalizado",
+    cancelled: "Cancelado"
+  }[status] || status;
 }
 
 function getPaymentRoute() {
