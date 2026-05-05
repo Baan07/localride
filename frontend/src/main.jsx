@@ -419,6 +419,24 @@ function DriverView({ session }) {
     }
   }
 
+  async function updateDriverTripStatus(status) {
+    if (!trip) {
+      setMessage("No hay viaje activo asignado.");
+      return;
+    }
+    try {
+      const data = await api(`/api/trips/${trip.id}/status`, {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ status })
+      });
+      setTrip(data.trip);
+      setMessage(`Viaje actualizado: ${status}.`);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   return (
     <section className="panel">
       <p className="eyebrow">Conductores</p>
@@ -432,12 +450,19 @@ function DriverView({ session }) {
           <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
           {trip ? (
-            <dl className="receipt">
-              <dt>Viaje</dt><dd>{trip.status}</dd>
-              <dt>Origen</dt><dd>{trip.pickup_address}</dd>
-              <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
-              <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
-            </dl>
+            <>
+              <dl className="receipt">
+                <dt>Viaje</dt><dd>{trip.status}</dd>
+                <dt>Origen</dt><dd>{trip.pickup_address}</dd>
+                <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
+                <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
+              </dl>
+              <div className="actions">
+                <button className="secondary" onClick={() => updateDriverTripStatus("driver_arriving")}>En camino</button>
+                <button className="secondary" onClick={() => updateDriverTripStatus("in_progress")}>Iniciar</button>
+                <button className="primary" onClick={() => updateDriverTripStatus("completed")}>Finalizar</button>
+              </div>
+            </>
           ) : (
             <p>No hay viaje activo asignado.</p>
           )}
