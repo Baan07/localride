@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { query } from "../db.js";
-import { HttpError } from "../errors.js";
+import { HttpError, asyncHandler } from "../errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 
@@ -15,7 +15,7 @@ function mercadoPagoClient() {
   return new MercadoPagoConfig({ accessToken: config.mpAccessToken });
 }
 
-paymentsRouter.post("/checkout-pro", requireAuth, async (req, res) => {
+paymentsRouter.post("/checkout-pro", requireAuth, asyncHandler(async (req, res) => {
   const input = z.object({ tripId: z.string().uuid() }).parse(req.body);
   const tripResult = await query("SELECT * FROM trips WHERE id = $1 AND passenger_id = $2", [input.tripId, req.user.sub]);
   const trip = tripResult.rows[0];
@@ -54,9 +54,9 @@ paymentsRouter.post("/checkout-pro", requireAuth, async (req, res) => {
 
   await audit({ actorId: req.user.sub, action: "payment.preference_created", entityType: "trip", entityId: trip.id, ip: req.ip });
   res.json({ preferenceId: response.id, initPoint: response.init_point, sandboxInitPoint: response.sandbox_init_point });
-});
+}));
 
-paymentsRouter.post("/webhooks/mercado-pago", async (req, res) => {
+paymentsRouter.post("/webhooks/mercado-pago", asyncHandler(async (req, res) => {
   if (!isValidMercadoPagoSignature(req)) {
     throw new HttpError(401, "Firma de webhook invalida");
   }
@@ -73,7 +73,7 @@ paymentsRouter.post("/webhooks/mercado-pago", async (req, res) => {
 
   res.status(200).json({ received: true });
   processMercadoPagoWebhook(req.body).catch((error) => console.error("mp webhook processing failed", error));
-});
+}));
 
 function isValidMercadoPagoSignature(req) {
   if (!config.mpWebhookSecret) return config.nodeEnv !== "production";

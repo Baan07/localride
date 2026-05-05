@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
+import { asyncHandler } from "../errors.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 import { findNearbyDrivers } from "../services/driverMatcher.js";
 
 export const driversRouter = Router();
 
-driversRouter.get("/nearby", requireAuth, async (req, res) => {
+driversRouter.get("/nearby", requireAuth, asyncHandler(async (req, res) => {
   const input = z.object({
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
@@ -15,9 +16,9 @@ driversRouter.get("/nearby", requireAuth, async (req, res) => {
   }).parse(req.query);
 
   res.json({ drivers: await findNearbyDrivers(input) });
-});
+}));
 
-driversRouter.put("/me/profile", requireAuth, requireRole("driver"), async (req, res) => {
+driversRouter.put("/me/profile", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const input = z.object({
     vehicleMake: z.string().min(2),
     vehicleModel: z.string().min(1),
@@ -39,9 +40,9 @@ driversRouter.put("/me/profile", requireAuth, requireRole("driver"), async (req,
 
   await audit({ actorId: req.user.sub, action: "driver.profile_upsert", entityType: "driver_profile", entityId: req.user.sub, ip: req.ip });
   res.json({ profile: result.rows[0] });
-});
+}));
 
-driversRouter.patch("/me/availability", requireAuth, requireRole("driver"), async (req, res) => {
+driversRouter.patch("/me/availability", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const input = z.object({
     online: z.boolean(),
     lat: z.number().min(-90).max(90).optional(),
@@ -67,4 +68,4 @@ driversRouter.patch("/me/availability", requireAuth, requireRole("driver"), asyn
 
   await audit({ actorId: req.user.sub, action: "driver.availability", entityType: "driver_profile", entityId: req.user.sub, metadata: input, ip: req.ip });
   res.json({ profile: result.rows[0] });
-});
+}));

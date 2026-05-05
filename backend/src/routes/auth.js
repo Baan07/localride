@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
-import { HttpError } from "../errors.js";
+import { HttpError, asyncHandler } from "../errors.js";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 
@@ -16,7 +16,7 @@ const registerSchema = z.object({
   role: z.enum(["passenger", "driver"]).default("passenger")
 });
 
-authRouter.post("/register", async (req, res) => {
+authRouter.post("/register", asyncHandler(async (req, res) => {
   const input = registerSchema.parse(req.body);
   const passwordHash = await bcrypt.hash(input.password, 12);
 
@@ -30,9 +30,9 @@ authRouter.post("/register", async (req, res) => {
   const user = result.rows[0];
   await audit({ actorId: user.id, action: "auth.register", entityType: "user", entityId: user.id, ip: req.ip });
   res.status(201).json({ user, token: signToken(user) });
-});
+}));
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", asyncHandler(async (req, res) => {
   const input = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
   const result = await query("SELECT * FROM users WHERE email = lower($1)", [input.email]);
   const user = result.rows[0];
@@ -46,10 +46,10 @@ authRouter.post("/login", async (req, res) => {
     user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },
     token: signToken(user)
   });
-});
+}));
 
-authRouter.get("/me", requireAuth, async (req, res) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   const result = await query("SELECT id, name, email, phone, role FROM users WHERE id = $1", [req.user.sub]);
   if (!result.rows[0]) throw new HttpError(404, "Usuario no encontrado");
   res.json({ user: result.rows[0] });
-});
+}));

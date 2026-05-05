@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
+import { asyncHandler } from "../errors.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 
 export const adminRouter = Router();
 
-adminRouter.get("/dashboard", requireAuth, requireRole("admin"), async (req, res) => {
+adminRouter.get("/dashboard", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const [trips, revenue, drivers, pendingDrivers] = await Promise.all([
     query("SELECT count(*)::int AS total FROM trips WHERE created_at::date = current_date"),
     query("SELECT coalesce(sum(fare_amount), 0)::numeric AS total FROM trips WHERE status = 'completed'"),
@@ -22,9 +23,9 @@ adminRouter.get("/dashboard", requireAuth, requireRole("admin"), async (req, res
       pendingDriverVerifications: pendingDrivers.rows[0].total
     }
   });
-});
+}));
 
-adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), async (req, res) => {
+adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const input = z.object({
     city: z.string().min(2),
     baseFare: z.number().min(0),
@@ -44,9 +45,9 @@ adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), async (req, re
 
   await audit({ actorId: req.user.sub, action: "admin.fare_rules_update", entityType: "fare_rule", entityId: result.rows[0].id, metadata: input, ip: req.ip });
   res.json({ fareRule: result.rows[0] });
-});
+}));
 
-adminRouter.patch("/drivers/:id/verification", requireAuth, requireRole("admin"), async (req, res) => {
+adminRouter.patch("/drivers/:id/verification", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const input = z.object({ status: z.enum(["pending", "approved", "rejected"]) }).parse(req.body);
   const result = await query(
     "UPDATE driver_profiles SET verification_status = $2 WHERE user_id = $1 RETURNING *",
@@ -55,4 +56,4 @@ adminRouter.patch("/drivers/:id/verification", requireAuth, requireRole("admin")
 
   await audit({ actorId: req.user.sub, action: "admin.driver_verification", entityType: "driver_profile", entityId: req.params.id, metadata: input, ip: req.ip });
   res.json({ profile: result.rows[0] });
-});
+}));

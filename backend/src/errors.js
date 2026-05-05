@@ -10,6 +10,12 @@ export function notFound(message = "Recurso no encontrado") {
   return new HttpError(404, message);
 }
 
+export function asyncHandler(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 export function errorHandler(error, req, res, next) {
   if (res.headersSent) return next(error);
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query, transaction } from "../db.js";
-import { HttpError } from "../errors.js";
+import { HttpError, asyncHandler } from "../errors.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 import { estimateFare } from "../services/fare.js";
@@ -16,12 +16,12 @@ const pointSchema = z.object({
   lng: z.number().min(-180).max(180)
 });
 
-tripsRouter.post("/estimate", requireAuth, async (req, res) => {
+tripsRouter.post("/estimate", requireAuth, asyncHandler(async (req, res) => {
   const input = z.object({ pickup: pointSchema, dropoff: pointSchema }).parse(req.body);
   res.json({ estimate: await estimateFare(input) });
-});
+}));
 
-tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), async (req, res) => {
+tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandler(async (req, res) => {
   const input = z.object({
     pickup: pointSchema,
     dropoff: pointSchema,
@@ -73,9 +73,9 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), async (req
   await audit({ actorId: req.user.sub, action: "trip.create", entityType: "trip", entityId: trip.id, metadata: { note: input.note || null }, ip: req.ip });
   broadcastTrip(trip.id, { type: "trip.updated", trip });
   res.status(201).json({ trip });
-});
+}));
 
-tripsRouter.get("/active", requireAuth, async (req, res) => {
+tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
   const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
   const result = await query(
     `SELECT * FROM trips
@@ -85,9 +85,9 @@ tripsRouter.get("/active", requireAuth, async (req, res) => {
     [req.user.sub]
   );
   res.json({ trip: result.rows[0] || null });
-});
+}));
 
-tripsRouter.get("/:id", requireAuth, async (req, res) => {
+tripsRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {
   const result = await query("SELECT * FROM trips WHERE id = $1", [req.params.id]);
   const trip = result.rows[0];
   if (!trip) throw new HttpError(404, "Viaje no encontrado");
@@ -98,9 +98,9 @@ tripsRouter.get("/:id", requireAuth, async (req, res) => {
   if (!isPassenger && !isDriver && !isAdmin) throw new HttpError(403, "No podes ver este viaje");
 
   res.json({ trip });
-});
+}));
 
-tripsRouter.patch("/:id/status", requireAuth, async (req, res) => {
+tripsRouter.patch("/:id/status", requireAuth, asyncHandler(async (req, res) => {
   const input = z.object({
     status: z.enum(["accepted", "driver_arriving", "in_progress", "completed", "cancelled"]),
     cancellationReason: z.string().max(300).optional()
@@ -130,9 +130,9 @@ tripsRouter.patch("/:id/status", requireAuth, async (req, res) => {
   await audit({ actorId: req.user.sub, action: `trip.${input.status}`, entityType: "trip", entityId: req.params.id, metadata: input, ip: req.ip });
   broadcastTrip(req.params.id, { type: "trip.updated", trip: result.rows[0] });
   res.json({ trip: result.rows[0] });
-});
+}));
 
-tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), async (req, res) => {
+tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const input = z.object({
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
@@ -159,4 +159,4 @@ tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), async (req
   const payload = { type: "driver.location", tripId: req.params.id, location: input, at: new Date().toISOString() };
   broadcastTrip(req.params.id, payload);
   res.status(201).json(payload);
-});
+}));
