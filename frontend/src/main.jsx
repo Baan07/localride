@@ -7,7 +7,10 @@ import "./styles.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:4000";
-const defaultCenter = [-34.6037, -58.3816];
+const defaultCenter = [
+  Number(import.meta.env.VITE_DEFAULT_LAT || -38.9931),
+  Number(import.meta.env.VITE_DEFAULT_LNG || -64.0942)
+];
 
 function api(path, { token, ...options } = {}) {
   return fetch(`${API_URL}${path}`, {
@@ -113,7 +116,7 @@ function AuthScreen({ onSession }) {
 
 function RideView({ session, goTrack }) {
   const [pickup, setPickup] = useState({ address: "Plaza principal", lat: defaultCenter[0], lng: defaultCenter[1] });
-  const [dropoff, setDropoff] = useState({ address: "Terminal", lat: -34.609, lng: -58.392 });
+  const [dropoff, setDropoff] = useState({ address: "Terminal", lat: defaultCenter[0] + 0.012, lng: defaultCenter[1] + 0.012 });
   const [drivers, setDrivers] = useState([]);
   const [estimate, setEstimate] = useState(null);
   const [message, setMessage] = useState("");
@@ -123,16 +126,35 @@ function RideView({ session, goTrack }) {
     refreshEstimate();
   }, []);
 
+  useEffect(() => {
+    getBrowserPosition().then((position) => {
+      const nextPickup = { ...pickup, lat: position.lat, lng: position.lng };
+      const nextDropoff = { ...dropoff, lat: position.lat + 0.012, lng: position.lng + 0.012 };
+      setPickup(nextPickup);
+      setDropoff(nextDropoff);
+      refreshNearbyAt(nextPickup);
+      refreshEstimateFor(nextPickup, nextDropoff);
+    });
+  }, []);
+
   async function refreshNearby() {
-    const data = await api(`/api/drivers/nearby?lat=${pickup.lat}&lng=${pickup.lng}&radiusMeters=10000`, { token: session.token });
+    return refreshNearbyAt(pickup);
+  }
+
+  async function refreshNearbyAt(point) {
+    const data = await api(`/api/drivers/nearby?lat=${point.lat}&lng=${point.lng}&radiusMeters=10000`, { token: session.token });
     setDrivers(data.drivers);
   }
 
   async function refreshEstimate() {
+    return refreshEstimateFor(pickup, dropoff);
+  }
+
+  async function refreshEstimateFor(nextPickup, nextDropoff) {
     const data = await api("/api/trips/estimate", {
       method: "POST",
       token: session.token,
-      body: JSON.stringify({ pickup, dropoff })
+      body: JSON.stringify({ pickup: nextPickup, dropoff: nextDropoff })
     });
     setEstimate(data.estimate);
   }
