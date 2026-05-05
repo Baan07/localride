@@ -453,6 +453,11 @@ function TrackView({ session }) {
             <button className="secondary" onClick={() => updateStatus("in_progress")}>Iniciar</button>
             <button className="primary" onClick={() => updateStatus("completed")}>Finalizar</button>
           </div>
+        ) : trip.payment_method === "cash" ? (
+          <div className="actions">
+            <span className="cash-badge">Pago en efectivo al conductor</span>
+            <button className="secondary" onClick={() => updateStatus("cancelled")}>Cancelar viaje</button>
+          </div>
         ) : (
           <div className="actions">
             <button className="primary" disabled={checkoutLoading} onClick={openCheckout}>
@@ -470,6 +475,7 @@ function TrackView({ session }) {
           <dt>Origen</dt><dd>{trip.pickup_address}</dd>
           <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
           <dt>Distancia</dt><dd>{Math.round(trip.distance_meters / 100) / 10} km</dd>
+          <dt>Pago</dt><dd>{paymentMethodLabel(trip.payment_method)}</dd>
           <dt>Ubicacion conductor</dt><dd>{location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Esperando"}</dd>
         </dl>
       </div>
@@ -666,6 +672,13 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function paymentMethodLabel(value) {
+  return {
+    mercado_pago: "Mercado Pago",
+    cash: "Efectivo"
+  }[value] || value;
 }
 
 async function searchRioColorado(query) {
