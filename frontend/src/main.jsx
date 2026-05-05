@@ -122,8 +122,9 @@ function AuthScreen({ onSession }) {
 }
 
 function RideView({ session, goTrack }) {
-  const [pickup, setPickup] = useState({ address: "Plaza principal", lat: defaultCenter[0], lng: defaultCenter[1] });
-  const [dropoff, setDropoff] = useState({ address: "Terminal", lat: defaultCenter[0] + 0.012, lng: defaultCenter[1] + 0.012 });
+  const savedRidePoints = loadSavedRidePoints();
+  const [pickup, setPickup] = useState(savedRidePoints?.pickup || { address: "Plaza principal", lat: defaultCenter[0], lng: defaultCenter[1] });
+  const [dropoff, setDropoff] = useState(savedRidePoints?.dropoff || { address: "Terminal", lat: defaultCenter[0] + 0.012, lng: defaultCenter[1] + 0.012 });
   const [drivers, setDrivers] = useState([]);
   const [estimate, setEstimate] = useState(null);
   const [route, setRoute] = useState(null);
@@ -137,6 +138,7 @@ function RideView({ session, goTrack }) {
   }, []);
 
   useEffect(() => {
+    if (savedRidePoints?.pickup) return;
     getBrowserPosition().then((position) => {
       const nextPickup = { ...pickup, lat: position.lat, lng: position.lng };
       const nextDropoff = { ...dropoff, lat: position.lat + 0.012, lng: position.lng + 0.012 };
@@ -204,6 +206,7 @@ function RideView({ session, goTrack }) {
         })
       });
       localStorage.setItem("localride-last-trip-id", data.trip.id);
+      localStorage.setItem("localride-last-ride-points", JSON.stringify({ pickup, dropoff }));
 
       if (paymentMethod !== "mercado_pago") {
         setMessage(`Viaje creado: ${tripStatusLabel(data.trip.status)}. Pago en efectivo al conductor.`);
@@ -977,6 +980,16 @@ function getPaymentRoute() {
   if (path.includes("/payments/failure")) return "failure";
   if (path.includes("/payments/pending")) return "pending";
   return "";
+}
+
+function loadSavedRidePoints() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("localride-last-ride-points") || "null");
+    if (!saved?.pickup?.lat || !saved?.pickup?.lng) return null;
+    return saved;
+  } catch {
+    return null;
+  }
 }
 
 createRoot(document.getElementById("root")).render(<App />);
