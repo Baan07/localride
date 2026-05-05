@@ -123,6 +123,8 @@ function RideView({ session, goTrack }) {
   const [drivers, setDrivers] = useState([]);
   const [estimate, setEstimate] = useState(null);
   const [route, setRoute] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("mercado_pago");
+  const [carType, setCarType] = useState("standard");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -194,10 +196,16 @@ function RideView({ session, goTrack }) {
           pickup,
           dropoff,
           route: route ? { distanceMeters: route.distanceMeters, durationSeconds: route.durationSeconds } : undefined,
-          paymentMethod: "mercado_pago"
+          paymentMethod
         })
       });
       localStorage.setItem("localride-last-trip-id", data.trip.id);
+
+      if (paymentMethod !== "mercado_pago") {
+        setMessage(`Viaje creado: ${tripStatusLabel(data.trip.status)}. Pago en efectivo al conductor.`);
+        goTrack();
+        return;
+      }
 
       try {
         const preference = await api("/api/payments/checkout-pro", {
@@ -235,13 +243,28 @@ function RideView({ session, goTrack }) {
         <form className="form-grid one" onSubmit={createTrip}>
           <AddressSearch label="Origen" value={pickup.address} onText={(address) => setPickup({ ...pickup, address })} onSelect={selectPickup} />
           <AddressSearch label="Destino" value={dropoff.address} onText={(address) => setDropoff({ ...dropoff, address })} onSelect={selectDropoff} />
+          <label>
+            Tipo de coche
+            <select value={carType} onChange={(event) => setCarType(event.target.value)}>
+              <option value="standard">Auto comun</option>
+              <option value="comfort">Comfort</option>
+              <option value="xl">Auto grande</option>
+            </select>
+          </label>
+          <label>
+            Forma de pago
+            <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+              <option value="mercado_pago">Mercado Pago</option>
+              <option value="cash">Efectivo</option>
+            </select>
+          </label>
           <div className="fare-card">
             <span>Estimado</span>
             <strong>{estimate ? money(estimate.amount) : "Calculando..."}</strong>
             <small>{estimate ? `${Math.round(estimate.distanceMeters / 100) / 10} km por calles` : "Calculando ruta"}</small>
           </div>
           <button type="button" className="secondary" onClick={() => { refreshNearby(); refreshEstimate(); }}>Recalcular</button>
-          <button className="primary">Confirmar y pagar con Mercado Pago</button>
+          <button className="primary">{paymentMethod === "mercado_pago" ? "Confirmar y pagar con Mercado Pago" : "Confirmar viaje"}</button>
           {message && <p className="ok">{message}</p>}
         </form>
       </div>

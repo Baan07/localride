@@ -6,7 +6,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 .app-shell {
@@ -99,6 +99,14 @@ input {
   border: 1px solid #d9e1ec;
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+select {
+  min-height: 44px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
 }
 
 .address-field {
