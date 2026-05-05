@@ -368,16 +368,55 @@ function TrackView({ session }) {
 
 function DriverView({ session }) {
   const [online, setOnline] = useState(false);
+  const [trip, setTrip] = useState(null);
+  const [message, setMessage] = useState("");
   const disabled = session.user.role !== "driver";
+
+  useEffect(() => {
+    if (!disabled) loadDriverTrip();
+  }, [disabled]);
 
   async function updateAvailability(next) {
     setOnline(next);
     const position = await getBrowserPosition();
-    await api("/api/drivers/me/availability", {
-      method: "PATCH",
-      token: session.token,
-      body: JSON.stringify({ online: next, lat: position.lat, lng: position.lng })
-    });
+    try {
+      await api("/api/drivers/me/availability", {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ online: next, lat: position.lat, lng: position.lng })
+      });
+      setMessage(next ? "Conductor online." : "Conductor fuera de linea.");
+      await loadDriverTrip();
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function loadDriverTrip() {
+    try {
+      const data = await api("/api/trips/active", { token: session.token });
+      setTrip(data.trip);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function sendLocation() {
+    if (!trip) {
+      setMessage("No hay viaje activo asignado.");
+      return;
+    }
+    const position = await getBrowserPosition();
+    try {
+      await api(`/api/trips/${trip.id}/location`, {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({ lat: position.lat, lng: position.lng, speedKmh: 0 })
+      });
+      setMessage("Ubicacion enviada al pasajero.");
+    } catch (err) {
+      setMessage(err.message);
+    }
   }
 
   return (
@@ -389,7 +428,20 @@ function DriverView({ session }) {
           <button className={online ? "primary" : "secondary"} onClick={() => updateAvailability(!online)}>
             {online ? "Salir de linea" : "Ponerme online"}
           </button>
+          <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
+          <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
+          {trip ? (
+            <dl className="receipt">
+              <dt>Viaje</dt><dd>{trip.status}</dd>
+              <dt>Origen</dt><dd>{trip.pickup_address}</dd>
+              <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
+              <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
+            </dl>
+          ) : (
+            <p>No hay viaje activo asignado.</p>
+          )}
+          {message && <p className={message.includes("No ") || message.includes("error") ? "error" : "ok"}>{message}</p>}
         </div>
       )}
     </section>
