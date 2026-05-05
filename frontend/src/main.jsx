@@ -360,6 +360,7 @@ function FitRoute({ pickup, dropoff, route }) {
 
 function TrackView({ session }) {
   const [trip, setTrip] = useState(null);
+  const [history, setHistory] = useState([]);
   const [location, setLocation] = useState(null);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -370,6 +371,7 @@ function TrackView({ session }) {
       setError("");
       try {
         const data = await api("/api/trips/active", { token: session.token });
+        api("/api/trips", { token: session.token }).then((historyData) => setHistory(historyData.trips || [])).catch(() => {});
         if (data.trip) {
           setTrip(data.trip);
           return;
@@ -435,7 +437,14 @@ function TrackView({ session }) {
     }
   }
 
-  if (!trip) return <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />;
+  if (!trip) {
+    return (
+      <section className="grid two">
+        <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />
+        <TripHistory trips={history} />
+      </section>
+    );
+  }
 
   return (
     <section className="grid two">
@@ -479,7 +488,32 @@ function TrackView({ session }) {
           <dt>Ubicacion conductor</dt><dd>{location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Esperando"}</dd>
         </dl>
       </div>
+      <TripHistory trips={history} />
     </section>
+  );
+}
+
+function TripHistory({ trips }) {
+  return (
+    <div className="panel history-panel">
+      <p className="eyebrow">Historial</p>
+      <h2>Viajes recientes</h2>
+      <div className="history-list">
+        {trips.length === 0 && <p>No hay viajes registrados.</p>}
+        {trips.map((trip) => (
+          <article key={trip.id} className="history-item">
+            <div>
+              <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
+              <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)}</span>
+            </div>
+            <div>
+              <strong>{money(trip.fare_amount)}</strong>
+              <span>{Math.round(trip.distance_meters / 100) / 10} km</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 

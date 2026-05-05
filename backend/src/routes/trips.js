@@ -93,6 +93,19 @@ tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
   res.json({ trip: result.rows[0] || null });
 }));
 
+tripsRouter.get("/", requireAuth, asyncHandler(async (req, res) => {
+  const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
+  const result = await query(
+    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, created_at, completed_at
+     FROM trips
+     WHERE ${column} = $1
+     ORDER BY created_at DESC
+     LIMIT 20`,
+    [req.user.sub]
+  );
+  res.json({ trips: result.rows });
+}));
+
 tripsRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {
   const result = await query("SELECT * FROM trips WHERE id = $1", [req.params.id]);
   const trip = result.rows[0];
