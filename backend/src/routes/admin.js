@@ -43,7 +43,7 @@ adminRouter.get("/trips", requireAuth, requireRole("admin"), asyncHandler(async 
   const result = await query(
     `SELECT
        t.id, t.status, t.pickup_address, t.dropoff_address, t.distance_meters,
-       t.fare_amount, t.platform_fee, t.payment_method, t.created_at, t.completed_at,
+       t.fare_amount, t.platform_fee, t.payment_method, t.passenger_rating, t.passenger_rating_comment, t.created_at, t.completed_at,
        passenger.name AS passenger_name,
        driver.name AS driver_name
      FROM trips t

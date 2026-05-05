@@ -380,6 +380,7 @@ function TrackView({ session }) {
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [lastCompletedTrip, setLastCompletedTrip] = useState(null);
 
   useEffect(() => {
     async function loadTrip() {
@@ -428,6 +429,10 @@ function TrackView({ session }) {
         body: JSON.stringify({ status })
       });
       setTrip(data.trip);
+      if (status === "completed") {
+        setLastCompletedTrip(data.trip);
+        setTrip(null);
+      }
     } catch (err) {
       setActionMessage(err.message);
     }
@@ -455,7 +460,11 @@ function TrackView({ session }) {
   if (!trip) {
     return (
       <section className="grid two">
-        <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />
+        {lastCompletedTrip ? (
+          <CompletedTripCard session={session} trip={lastCompletedTrip} onRated={setLastCompletedTrip} />
+        ) : (
+          <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />
+        )}
         {session.user.role === "driver" && <DriverRequestsPanel session={session} onAccepted={setTrip} />}
         <TripHistory trips={history} />
       </section>
@@ -505,6 +514,57 @@ function TrackView({ session }) {
         </dl>
       </div>
       <TripHistory trips={history} />
+    </section>
+  );
+}
+
+function CompletedTripCard({ session, trip, onRated }) {
+  const [rating, setRating] = useState(trip.passenger_rating || 5);
+  const [comment, setComment] = useState(trip.passenger_rating_comment || "");
+  const [message, setMessage] = useState("");
+
+  async function submitRating(event) {
+    event.preventDefault();
+    try {
+      const data = await api(`/api/trips/${trip.id}/rating`, {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({ rating, comment })
+      });
+      onRated(data.trip);
+      setMessage("Gracias por calificar el viaje.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  return (
+    <section className="panel complete-card">
+      <p className="eyebrow">Viaje cerrado</p>
+      <h2>Viaje finalizado</h2>
+      <dl className="receipt">
+        <dt>Origen</dt><dd>{trip.pickup_address}</dd>
+        <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
+        <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
+      </dl>
+      {session.user.role === "passenger" && (
+        <form className="form-grid one" onSubmit={submitRating}>
+          <label>
+            Calificacion al chofer
+            <select value={rating} onChange={(event) => setRating(Number(event.target.value))}>
+              <option value={5}>5 - Excelente</option>
+              <option value={4}>4 - Muy bueno</option>
+              <option value={3}>3 - Bueno</option>
+              <option value={2}>2 - Regular</option>
+              <option value={1}>1 - Malo</option>
+            </select>
+          </label>
+          <label>Comentario<input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Opcional" /></label>
+          <button className="primary">Enviar calificacion</button>
+        </form>
+      )}
+      {session.user.role === "driver" && <p className="ok">El viaje fue cerrado correctamente.</p>}
+      {message && <p className={message.includes("Gracias") ? "ok" : "error"}>{message}</p>}
     </section>
   );
 }
@@ -579,7 +639,7 @@ function TripHistory({ trips }) {
           <article key={trip.id} className="history-item">
             <div>
               <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
-              <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)}</span>
+              <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)}{trip.passenger_rating ? ` · ${trip.passenger_rating} estrellas` : ""}</span>
             </div>
             <div>
               <strong>{money(trip.fare_amount)}</strong>
@@ -687,6 +747,9 @@ function DriverView({ session }) {
         body: JSON.stringify({ status })
       });
       setTrip(data.trip);
+      if (status === "completed") {
+        setTrip(null);
+      }
       setMessage(`Viaje actualizado: ${tripStatusLabel(status)}.`);
     } catch (err) {
       setMessage(err.message);
@@ -927,7 +990,8 @@ function AdminView({ session }) {
             <article className="admin-item" key={trip.id}>
               <div>
                 <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
-                <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)} · {trip.passenger_name}</span>
+                <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)} · {trip.passenger_name}{trip.passenger_rating ? ` · ${trip.passenger_rating} estrellas` : ""}</span>
+                {trip.passenger_rating_comment && <span>Comentario: {trip.passenger_rating_comment}</span>}
                 <span>Conductor: {trip.driver_name || "Sin asignar"}</span>
               </div>
               <div>

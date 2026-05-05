@@ -123,7 +123,7 @@ tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
 tripsRouter.get("/", requireAuth, asyncHandler(async (req, res) => {
   const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
   const result = await query(
-    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, created_at, completed_at
+    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, passenger_rating, passenger_rating_comment, created_at, completed_at
      FROM trips
      WHERE ${column} = $1
      ORDER BY created_at DESC
@@ -131,6 +131,41 @@ tripsRouter.get("/", requireAuth, asyncHandler(async (req, res) => {
     [req.user.sub]
   );
   res.json({ trips: result.rows });
+}));
+
+tripsRouter.post("/:id/rating", requireAuth, requireRole("passenger", "admin"), asyncHandler(async (req, res) => {
+  const input = z.object({
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().max(300).optional()
+  }).parse(req.body);
+
+  const result = await query(
+    `UPDATE trips
+     SET passenger_rating = $3,
+         passenger_rating_comment = $4,
+         updated_at = now()
+     WHERE id = $1
+       AND passenger_id = $2
+       AND status = 'completed'
+     RETURNING *`,
+    [req.params.id, req.user.sub, input.rating, input.comment || null]
+  );
+
+  if (!result.rows[0]) throw new HttpError(404, "Viaje finalizado no encontrado para calificar");
+
+  await query(
+    `UPDATE driver_profiles
+     SET rating = COALESCE((
+       SELECT round(avg(passenger_rating)::numeric, 2)
+       FROM trips
+       WHERE driver_id = $1 AND passenger_rating IS NOT NULL
+     ), rating)
+     WHERE user_id = $1`,
+    [result.rows[0].driver_id]
+  );
+
+  await audit({ actorId: req.user.sub, action: "trip.rate", entityType: "trip", entityId: req.params.id, metadata: input, ip: req.ip });
+  res.json({ trip: result.rows[0] });
 }));
 
 tripsRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {

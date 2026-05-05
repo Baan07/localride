@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS trips (
   fare_amount numeric(12,2) NOT NULL,
   platform_fee numeric(12,2) NOT NULL,
   payment_method text NOT NULL,
+  passenger_rating integer CHECK (passenger_rating BETWEEN 1 AND 5),
+  passenger_rating_comment text,
   cancellation_reason text,
   accepted_at timestamptz,
   started_at timestamptz,
@@ -86,6 +88,9 @@ CREATE INDEX IF NOT EXISTS trips_pickup_location_idx ON trips USING gist(pickup_
 CREATE INDEX IF NOT EXISTS trips_status_idx ON trips(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS trips_driver_idx ON trips(driver_id, status);
 CREATE INDEX IF NOT EXISTS trips_passenger_idx ON trips(passenger_id, status);
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating integer CHECK (passenger_rating BETWEEN 1 AND 5);
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating_comment text;
 
 CREATE TABLE IF NOT EXISTS trip_locations (
   id bigserial PRIMARY KEY,
