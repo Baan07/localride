@@ -392,7 +392,7 @@ function TrackView({ session }) {
           return;
         }
 
-        const lastTripId = localStorage.getItem("localride-last-trip-id");
+        const lastTripId = session.user.role === "passenger" ? localStorage.getItem("localride-last-trip-id") : "";
         if (lastTripId) {
           const fallback = await api(`/api/trips/${lastTripId}`, { token: session.token });
           setTrip(fallback.trip);
@@ -456,6 +456,7 @@ function TrackView({ session }) {
     return (
       <section className="grid two">
         <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />
+        {session.user.role === "driver" && <DriverRequestsPanel session={session} onAccepted={setTrip} />}
         <TripHistory trips={history} />
       </section>
     );
@@ -504,6 +505,65 @@ function TrackView({ session }) {
         </dl>
       </div>
       <TripHistory trips={history} />
+    </section>
+  );
+}
+
+function DriverRequestsPanel({ session, onAccepted }) {
+  const [requests, setRequests] = useState([]);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    loadRequests();
+    const timer = setInterval(loadRequests, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  async function loadRequests() {
+    try {
+      const data = await api("/api/trips/driver/requests", { token: session.token });
+      setRequests(data.trips || []);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function acceptRequest(tripId) {
+    try {
+      const data = await api(`/api/trips/${tripId}/accept`, {
+        method: "POST",
+        token: session.token
+      });
+      setMessage("Pedido aceptado.");
+      setRequests((current) => current.filter((trip) => trip.id !== tripId));
+      onAccepted(data.trip);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  return (
+    <section className="panel history-panel">
+      <div className="section-row">
+        <div>
+          <p className="eyebrow">Pedidos</p>
+          <h2>Solicitudes pendientes</h2>
+        </div>
+        <button className="secondary" onClick={loadRequests}>Actualizar</button>
+      </div>
+      {message && <p className={message.includes("aceptado") ? "ok" : "error"}>{message}</p>}
+      <div className="request-box">
+        {requests.length === 0 && <span>No hay pedidos pendientes.</span>}
+        {requests.map((request) => (
+          <article className="request-item" key={request.id}>
+            <div>
+              <strong>{request.pickup_address} a {request.dropoff_address}</strong>
+              <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)}</span>
+            </div>
+            <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
