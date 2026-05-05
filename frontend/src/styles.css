@@ -219,6 +219,20 @@ select {
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .segmented button { border: 1px solid #d9e1ec; border-radius: 8px; padding: 10px; background: #fff; }
 .segmented .selected { border-color: #0e7c66; color: #0e7c66; background: #e9f5f1; }
+.demo-logins {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+.demo-logins button {
+  min-height: 38px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  color: #07594b;
+  background: #e9f5f1;
+  font-weight: 800;
+}
 
 .fare-card, .metric {
   border: 1px solid #d9e1ec;

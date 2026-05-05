@@ -78,6 +78,7 @@ function AuthScreen({ onSession }) {
   const [mode, setMode] = useState("login");
   const [role, setRole] = useState("passenger");
   const [error, setError] = useState("");
+  const [credentials, setCredentials] = useState({ email: "pasajero@localride.test", password: "LocalRide123!" });
 
   async function submit(event) {
     event.preventDefault();
@@ -101,8 +102,8 @@ function AuthScreen({ onSession }) {
         <h1>{mode === "login" ? "Entrar" : "Crear cuenta"}</h1>
         <form onSubmit={submit} className="form-grid one">
           {mode === "register" && <input name="name" placeholder="Nombre completo" required />}
-          <input name="email" type="email" placeholder="Email" required defaultValue="pasajero@localride.test" />
-          <input name="password" type="password" placeholder="Contrasena" required defaultValue="LocalRide123!" />
+          <input name="email" type="email" placeholder="Email" required value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} />
+          <input name="password" type="password" placeholder="Contrasena" required value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} />
           {mode === "register" && <input name="phone" placeholder="Telefono" />}
           {mode === "register" && (
             <div className="segmented">
@@ -113,6 +114,13 @@ function AuthScreen({ onSession }) {
           {error && <p className="error">{error}</p>}
           <button className="primary">Continuar</button>
         </form>
+        {mode === "login" && (
+          <div className="demo-logins">
+            <button type="button" onClick={() => setCredentials({ email: "pasajero@localride.test", password: "LocalRide123!" })}>Pasajero demo</button>
+            <button type="button" onClick={() => setCredentials({ email: "ana@localride.test", password: "LocalRide123!" })}>Conductor Ana</button>
+            <button type="button" onClick={() => setCredentials({ email: "admin@localride.test", password: "LocalRide123!" })}>Admin</button>
+          </div>
+        )}
         <button className="link-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? "Crear una cuenta nueva" : "Ya tengo cuenta"}
         </button>
