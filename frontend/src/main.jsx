@@ -673,6 +673,7 @@ function AdminView({ session }) {
   const [trips, setTrips] = useState([]);
   const [fareRule, setFareRule] = useState(null);
   const [message, setMessage] = useState("");
+  const [userActionMessage, setUserActionMessage] = useState("");
 
   useEffect(() => {
     if (session.user.role === "admin") {
@@ -724,16 +725,17 @@ function AdminView({ session }) {
   }
 
   async function verifyDriver(userId, status) {
+    setUserActionMessage("");
     try {
       await api(`/api/admin/drivers/${userId}/verification`, {
         method: "PATCH",
         token: session.token,
         body: JSON.stringify({ status })
       });
-      setMessage("Estado de conductor actualizado.");
+      setMessage(`Conductor ${verificationLabel(status).toLowerCase()}.`);
       await loadAdminData();
     } catch (err) {
-      setMessage(err.message);
+      setUserActionMessage(err.message);
     }
   }
 
@@ -776,6 +778,7 @@ function AdminView({ session }) {
         <section className="panel">
           <p className="eyebrow">Usuarios</p>
           <h2>Registrados</h2>
+          {userActionMessage && <p className="error">{userActionMessage}</p>}
           <div className="admin-list">
             {users.map((user) => (
               <article className="admin-item" key={user.id}>
@@ -786,8 +789,9 @@ function AdminView({ session }) {
                 </div>
                 {user.role === "driver" && (
                   <div className="mini-actions">
-                    <button className="secondary" onClick={() => verifyDriver(user.id, "approved")}>Aprobar</button>
-                    <button className="secondary" onClick={() => verifyDriver(user.id, "rejected")}>Rechazar</button>
+                    <span className={`verification-badge ${user.verification_status}`}>{verificationLabel(user.verification_status)}</span>
+                    <button className="secondary" disabled={user.verification_status === "approved"} onClick={() => verifyDriver(user.id, "approved")}>Aprobar</button>
+                    <button className="secondary" disabled={user.verification_status === "rejected"} onClick={() => verifyDriver(user.id, "rejected")}>Rechazar</button>
                   </div>
                 )}
               </article>

@@ -258,6 +258,28 @@ select {
   align-items: center;
   justify-content: flex-end;
 }
+.mini-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+.verification-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #eef2f7;
+  color: #667085;
+  font-weight: 900;
+}
+.verification-badge.approved {
+  background: #e9f5f1;
+  color: #07594b;
+}
+.verification-badge.rejected {
+  background: #fff1f1;
+  color: #c73838;
+}
 .empty { min-height: 280px; display: grid; place-items: center; text-align: center; align-content: center; color: #667085; }
 .pay-link { display: inline-block; margin-top: 14px; color: #07594b; font-weight: 900; }
 .payment-return {
