@@ -218,6 +218,46 @@ select {
 .receipt dd { margin: 0; font-weight: 900; text-align: right; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
 .metric strong { display: block; font-size: 24px; margin-top: 4px; }
+.section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-stack {
+  display: grid;
+  gap: 18px;
+}
+.admin-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.admin-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+.admin-item strong,
+.admin-item span {
+  display: block;
+}
+.admin-item span {
+  color: #667085;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
 .empty { min-height: 280px; display: grid; place-items: center; text-align: center; align-content: center; color: #667085; }
 .pay-link { display: inline-block; margin-top: 14px; color: #07594b; font-weight: 900; }
 .payment-return {

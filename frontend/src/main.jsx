@@ -669,22 +669,152 @@ function PaymentReturn({ status }) {
 
 function AdminView({ session }) {
   const [dashboard, setDashboard] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [fareRule, setFareRule] = useState(null);
+  const [message, setMessage] = useState("");
+
   useEffect(() => {
     if (session.user.role === "admin") {
-      api("/api/admin/dashboard", { token: session.token }).then(setDashboard);
+      loadAdminData();
     }
   }, [session]);
 
+  async function loadAdminData() {
+    setMessage("");
+    try {
+      const [dashboardData, usersData, tripsData, fareData] = await Promise.all([
+        api("/api/admin/dashboard", { token: session.token }),
+        api("/api/admin/users", { token: session.token }),
+        api("/api/admin/trips", { token: session.token }),
+        api("/api/admin/fare-rules", { token: session.token })
+      ]);
+      setDashboard(dashboardData);
+      setUsers(usersData.users || []);
+      setTrips(tripsData.trips || []);
+      setFareRule(fareData.fareRule);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function saveFareRule(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = {
+      city: form.get("city"),
+      baseFare: Number(form.get("baseFare")),
+      pricePerKm: Number(form.get("pricePerKm")),
+      pricePerMinute: Number(form.get("pricePerMinute")),
+      platformFeePercent: Number(form.get("platformFeePercent")),
+      cancellationGraceMinutes: Number(form.get("cancellationGraceMinutes"))
+    };
+    try {
+      const data = await api("/api/admin/fare-rules", {
+        method: "PUT",
+        token: session.token,
+        body: JSON.stringify(body)
+      });
+      setFareRule(data.fareRule);
+      setMessage("Tarifas actualizadas.");
+      await loadAdminData();
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function verifyDriver(userId, status) {
+    try {
+      await api(`/api/admin/drivers/${userId}/verification`, {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ status })
+      });
+      setMessage("Estado de conductor actualizado.");
+      await loadAdminData();
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   if (session.user.role !== "admin") return <EmptyState title="Solo administradores" text="El panel controla tarifas, verificacion y auditoria." />;
   return (
-    <section className="panel">
-      <p className="eyebrow">Operacion</p>
-      <h2>Panel local</h2>
-      <div className="metrics">
-        {dashboard && Object.entries(dashboard.metrics).map(([key, value]) => (
-          <div className="metric" key={key}><span>{key}</span><strong>{String(value)}</strong></div>
-        ))}
+    <section className="admin-stack">
+      <div className="panel">
+        <div className="section-row">
+          <div>
+            <p className="eyebrow">Operacion</p>
+            <h2>Panel local</h2>
+          </div>
+          <button className="secondary" onClick={loadAdminData}>Actualizar</button>
+        </div>
+        <div className="metrics">
+          {dashboard && Object.entries(dashboard.metrics).map(([key, value]) => (
+            <div className="metric" key={key}><span>{adminMetricLabel(key)}</span><strong>{String(value)}</strong></div>
+          ))}
+        </div>
+        {message && <p className={message.includes("actualiz") ? "ok" : "error"}>{message}</p>}
       </div>
+
+      <div className="grid two">
+        <section className="panel">
+          <p className="eyebrow">Tarifas</p>
+          <h2>Reglas activas</h2>
+          {fareRule && (
+            <form className="form-grid one" onSubmit={saveFareRule}>
+              <label>Localidad<input name="city" defaultValue={fareRule.city} /></label>
+              <label>Tarifa base<input name="baseFare" type="number" defaultValue={fareRule.base_fare} /></label>
+              <label>Precio por km<input name="pricePerKm" type="number" defaultValue={fareRule.price_per_km} /></label>
+              <label>Precio por minuto<input name="pricePerMinute" type="number" defaultValue={fareRule.price_per_minute} /></label>
+              <label>Comision plataforma %<input name="platformFeePercent" type="number" defaultValue={fareRule.platform_fee_percent} /></label>
+              <label>Minutos gracia cancelacion<input name="cancellationGraceMinutes" type="number" defaultValue={fareRule.cancellation_grace_minutes} /></label>
+              <button className="primary">Guardar tarifas</button>
+            </form>
+          )}
+        </section>
+
+        <section className="panel">
+          <p className="eyebrow">Usuarios</p>
+          <h2>Registrados</h2>
+          <div className="admin-list">
+            {users.map((user) => (
+              <article className="admin-item" key={user.id}>
+                <div>
+                  <strong>{user.name}</strong>
+                  <span>{user.email} · {roleLabel(user.role)}</span>
+                  {user.role === "driver" && <span>{user.vehicle_make} {user.vehicle_model} · {user.plate || "Sin patente"} · {verificationLabel(user.verification_status)}</span>}
+                </div>
+                {user.role === "driver" && (
+                  <div className="mini-actions">
+                    <button className="secondary" onClick={() => verifyDriver(user.id, "approved")}>Aprobar</button>
+                    <button className="secondary" onClick={() => verifyDriver(user.id, "rejected")}>Rechazar</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="panel">
+        <p className="eyebrow">Viajes</p>
+        <h2>Ultimos pedidos</h2>
+        <div className="admin-list">
+          {trips.map((trip) => (
+            <article className="admin-item" key={trip.id}>
+              <div>
+                <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
+                <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)} · {trip.passenger_name}</span>
+                <span>Conductor: {trip.driver_name || "Sin asignar"}</span>
+              </div>
+              <div>
+                <strong>{money(trip.fare_amount)}</strong>
+                <span>{Math.round(trip.distance_meters / 100) / 10} km</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }
@@ -712,6 +842,31 @@ function paymentMethodLabel(value) {
   return {
     mercado_pago: "Mercado Pago",
     cash: "Efectivo"
+  }[value] || value;
+}
+
+function roleLabel(value) {
+  return {
+    passenger: "Pasajero",
+    driver: "Conductor",
+    admin: "Administrador"
+  }[value] || value;
+}
+
+function verificationLabel(value) {
+  return {
+    pending: "Pendiente",
+    approved: "Aprobado",
+    rejected: "Rechazado"
+  }[value] || value;
+}
+
+function adminMetricLabel(value) {
+  return {
+    tripsToday: "Viajes hoy",
+    revenue: "Facturacion",
+    onlineDrivers: "Conductores online",
+    pendingDriverVerifications: "Conductores pendientes"
   }[value] || value;
 }
 

@@ -25,6 +25,41 @@ adminRouter.get("/dashboard", requireAuth, requireRole("admin"), asyncHandler(as
   });
 }));
 
+adminRouter.get("/users", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT
+       u.id, u.name, u.email, u.phone, u.role, u.created_at,
+       d.vehicle_make, d.vehicle_model, d.vehicle_color, d.plate,
+       d.verification_status, d.online, d.rating
+     FROM users u
+     LEFT JOIN driver_profiles d ON d.user_id = u.id
+     ORDER BY u.created_at DESC
+     LIMIT 100`
+  );
+  res.json({ users: result.rows });
+}));
+
+adminRouter.get("/trips", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT
+       t.id, t.status, t.pickup_address, t.dropoff_address, t.distance_meters,
+       t.fare_amount, t.platform_fee, t.payment_method, t.created_at, t.completed_at,
+       passenger.name AS passenger_name,
+       driver.name AS driver_name
+     FROM trips t
+     JOIN users passenger ON passenger.id = t.passenger_id
+     LEFT JOIN users driver ON driver.id = t.driver_id
+     ORDER BY t.created_at DESC
+     LIMIT 100`
+  );
+  res.json({ trips: result.rows });
+}));
+
+adminRouter.get("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const result = await query("SELECT * FROM fare_rules WHERE active = true ORDER BY created_at DESC LIMIT 1");
+  res.json({ fareRule: result.rows[0] || null });
+}));
+
 adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const input = z.object({
     city: z.string().min(2),
