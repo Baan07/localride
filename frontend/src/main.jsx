@@ -389,14 +389,24 @@ function TrackView({ session }) {
         const data = await api("/api/trips/active", { token: session.token });
         api("/api/trips", { token: session.token }).then((historyData) => setHistory(historyData.trips || [])).catch(() => {});
         if (data.trip) {
-          setTrip(data.trip);
+          if (data.trip.status === "completed") {
+            setLastCompletedTrip(data.trip);
+            setTrip(null);
+          } else {
+            setTrip(data.trip);
+          }
           return;
         }
 
         const lastTripId = session.user.role === "passenger" ? localStorage.getItem("localride-last-trip-id") : "";
         if (lastTripId) {
           const fallback = await api(`/api/trips/${lastTripId}`, { token: session.token });
-          setTrip(fallback.trip);
+          if (fallback.trip?.status === "completed") {
+            setLastCompletedTrip(fallback.trip);
+            setTrip(null);
+          } else {
+            setTrip(fallback.trip);
+          }
           return;
         }
 
@@ -432,6 +442,7 @@ function TrackView({ session }) {
       if (status === "completed") {
         setLastCompletedTrip(data.trip);
         setTrip(null);
+        localStorage.setItem("localride-last-completed-trip-id", data.trip.id);
       }
     } catch (err) {
       setActionMessage(err.message);
