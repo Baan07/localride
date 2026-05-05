@@ -312,6 +312,10 @@ select {
   font-size: 13px;
   margin-top: 4px;
 }
+.rating-line.rated {
+  color: #a36d00;
+  font-weight: 900;
+}
 .mini-actions {
   display: flex;
   flex-wrap: wrap;

@@ -1009,9 +1009,12 @@ function AdminView({ session }) {
             <article className="admin-item" key={trip.id}>
               <div>
                 <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
-                <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)} · {trip.passenger_name}{trip.passenger_rating ? ` · ${trip.passenger_rating} estrellas` : ""}</span>
-                {trip.passenger_rating_comment && <span>Comentario: {trip.passenger_rating_comment}</span>}
+                <span>{tripStatusLabel(trip.status)} · {paymentMethodLabel(trip.payment_method)} · Pasajero: {trip.passenger_name}</span>
                 <span>Conductor: {trip.driver_name || "Sin asignar"}</span>
+                <span className={trip.passenger_rating ? "rating-line rated" : "rating-line"}>
+                  Calificacion: {trip.passenger_rating ? `${"★".repeat(Number(trip.passenger_rating))} (${trip.passenger_rating}/5)` : "Sin calificar"}
+                </span>
+                {trip.passenger_rating_comment && <span>Comentario: {trip.passenger_rating_comment}</span>}
               </div>
               <div>
                 <strong>{money(trip.fare_amount)}</strong>
