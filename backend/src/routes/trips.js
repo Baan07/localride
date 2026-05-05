@@ -81,8 +81,8 @@ tripsRouter.get("/driver/requests", requireAuth, requireRole("driver"), asyncHan
      FROM trips
      WHERE status = 'requested'
        AND driver_id IS NULL
-     ORDER BY created_at ASC
-     LIMIT 20`
+     ORDER BY created_at DESC
+     LIMIT 10`
   );
   res.json({ trips: result.rows });
 }));

@@ -558,7 +558,7 @@ function DriverRequestsPanel({ session, onAccepted }) {
           <article className="request-item" key={request.id}>
             <div>
               <strong>{request.pickup_address} a {request.dropoff_address}</strong>
-              <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)}</span>
+              <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)} · {formatDateTime(request.created_at)}</span>
             </div>
             <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
           </article>
@@ -713,7 +713,7 @@ function DriverView({ session }) {
               <article className="request-item" key={request.id}>
                 <div>
                   <strong>{request.pickup_address} a {request.dropoff_address}</strong>
-                  <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)}</span>
+                  <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)} · {formatDateTime(request.created_at)}</span>
                 </div>
                 <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
               </article>
@@ -976,6 +976,16 @@ function paymentMethodLabel(value) {
     mercado_pago: "Mercado Pago",
     cash: "Efectivo"
   }[value] || value;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 function roleLabel(value) {
