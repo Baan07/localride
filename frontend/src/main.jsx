@@ -29,7 +29,8 @@ function api(path, { token, ...options } = {}) {
 
 function App() {
   const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("localride-session") || "null"));
-  const [activeTab, setActiveTab] = useState("ride");
+  const initialPaymentRoute = getPaymentRoute();
+  const [activeTab, setActiveTab] = useState(initialPaymentRoute ? "payments" : "ride");
 
   useEffect(() => {
     if (session) localStorage.setItem("localride-session", JSON.stringify(session));
@@ -60,7 +61,7 @@ function App() {
         {activeTab === "ride" && <RideView session={session} goTrack={() => setActiveTab("track")} />}
         {activeTab === "track" && <TrackView session={session} />}
         {activeTab === "driver" && <DriverView session={session} />}
-        {activeTab === "payments" && <PaymentsView session={session} />}
+        {activeTab === "payments" && <PaymentsView session={session} initialStatus={initialPaymentRoute} />}
         {activeTab === "admin" && <AdminView session={session} />}
       </main>
     </div>
@@ -395,7 +396,7 @@ function DriverView({ session }) {
   );
 }
 
-function PaymentsView({ session }) {
+function PaymentsView({ session, initialStatus }) {
   const [tripId, setTripId] = useState("");
   const [result, setResult] = useState(null);
 
@@ -413,12 +414,28 @@ function PaymentsView({ session }) {
     <section className="panel">
       <p className="eyebrow">Mercado Pago</p>
       <h2>Checkout Pro</h2>
+      {initialStatus && <PaymentReturn status={initialStatus} />}
       <form className="form-grid one" onSubmit={createPreference}>
         <input value={tripId} onChange={(e) => setTripId(e.target.value)} placeholder="ID del viaje" />
         <button className="primary">Crear preferencia</button>
       </form>
       {result && <a className="pay-link" href={result.initPoint || result.sandboxInitPoint}>Abrir checkout</a>}
     </section>
+  );
+}
+
+function PaymentReturn({ status }) {
+  const copy = {
+    success: ["Pago aprobado", "Mercado Pago confirmo el pago. El viaje queda listo para continuar."],
+    failure: ["Pago rechazado", "Mercado Pago no pudo aprobar el pago. Podes volver a intentarlo."],
+    pending: ["Pago pendiente", "El pago quedo pendiente de confirmacion."]
+  }[status] || ["Pago", "Estado recibido desde Mercado Pago."];
+
+  return (
+    <div className={`payment-return ${status}`}>
+      <strong>{copy[0]}</strong>
+      <span>{copy[1]}</span>
+    </div>
   );
 }
 
@@ -461,6 +478,14 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function getPaymentRoute() {
+  const path = window.location.pathname;
+  if (path.includes("/payments/success")) return "success";
+  if (path.includes("/payments/failure")) return "failure";
+  if (path.includes("/payments/pending")) return "pending";
+  return "";
 }
 
 createRoot(document.getElementById("root")).render(<App />);
