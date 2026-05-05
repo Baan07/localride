@@ -250,6 +250,8 @@ function TrackView({ session }) {
   const [trip, setTrip] = useState(null);
   const [location, setLocation] = useState(null);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   useEffect(() => {
     async function loadTrip() {
@@ -289,12 +291,36 @@ function TrackView({ session }) {
   }, [trip?.id, session.token]);
 
   async function updateStatus(status) {
-    const data = await api(`/api/trips/${trip.id}/status`, {
-      method: "PATCH",
-      token: session.token,
-      body: JSON.stringify({ status })
-    });
-    setTrip(data.trip);
+    setActionMessage("");
+    try {
+      const data = await api(`/api/trips/${trip.id}/status`, {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ status })
+      });
+      setTrip(data.trip);
+    } catch (err) {
+      setActionMessage(err.message);
+    }
+  }
+
+  async function openCheckout() {
+    setCheckoutLoading(true);
+    setActionMessage("");
+    try {
+      const preference = await api("/api/payments/checkout-pro", {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({ tripId: trip.id })
+      });
+      const checkoutUrl = preference.initPoint || preference.sandboxInitPoint;
+      if (!checkoutUrl) throw new Error("Mercado Pago no devolvio URL de checkout");
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      setActionMessage(err.message);
+    } finally {
+      setCheckoutLoading(false);
+    }
   }
 
   if (!trip) return <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />;
@@ -309,11 +335,21 @@ function TrackView({ session }) {
             <span key={status} className={trip.status === status ? "current" : ""}>{status}</span>
           ))}
         </div>
-        <div className="actions">
-          <button className="secondary" onClick={() => updateStatus("driver_arriving")}>En camino</button>
-          <button className="secondary" onClick={() => updateStatus("in_progress")}>Iniciar</button>
-          <button className="primary" onClick={() => updateStatus("completed")}>Finalizar</button>
-        </div>
+        {session.user.role === "driver" ? (
+          <div className="actions">
+            <button className="secondary" onClick={() => updateStatus("driver_arriving")}>En camino</button>
+            <button className="secondary" onClick={() => updateStatus("in_progress")}>Iniciar</button>
+            <button className="primary" onClick={() => updateStatus("completed")}>Finalizar</button>
+          </div>
+        ) : (
+          <div className="actions">
+            <button className="primary" disabled={checkoutLoading} onClick={openCheckout}>
+              {checkoutLoading ? "Abriendo pago..." : "Pagar con Mercado Pago"}
+            </button>
+            <button className="secondary" onClick={() => updateStatus("cancelled")}>Cancelar viaje</button>
+          </div>
+        )}
+        {actionMessage && <p className="error">{actionMessage}</p>}
       </div>
       <div className="panel">
         <p className="eyebrow">Detalle</p>
