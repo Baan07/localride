@@ -12,7 +12,6 @@ const defaultCenter = [
   Number(import.meta.env.VITE_DEFAULT_LNG || -64.0942)
 ];
 const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
-const serviceAreaQuery = "Rio Colorado, Rio Negro o La Adela, La Pampa, Argentina";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 
 function api(path, { token, ...options } = {}) {
@@ -647,14 +646,28 @@ function money(value) {
 }
 
 async function searchRioColorado(query) {
+  const searches = [
+    `${query}, Rio Colorado, Rio Negro, Argentina`,
+    `${query}, La Adela, La Pampa, Argentina`
+  ];
+
+  const results = await Promise.all(searches.map(searchAddress));
+  const byPlaceId = new Map();
+  for (const place of results.flat()) {
+    byPlaceId.set(place.place_id, place);
+  }
+  return [...byPlaceId.values()].slice(0, 8);
+}
+
+async function searchAddress(q) {
   const params = new URLSearchParams({
-    q: `${query}, ${serviceAreaQuery}`,
+    q,
     format: "jsonv2",
     addressdetails: "1",
     countrycodes: "ar",
     viewbox: serviceAreaViewbox,
     bounded: "1",
-    limit: "8"
+    limit: "5"
   });
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
   if (!response.ok) throw new Error("No se pudo buscar la direccion");
