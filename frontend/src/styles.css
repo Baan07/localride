@@ -91,6 +91,53 @@ button { cursor: pointer; }
   border-radius: 8px;
 }
 
+.localride-marker {
+  display: grid;
+  place-items: center;
+  width: 34px !important;
+  height: 42px !important;
+  margin: 0 !important;
+  background: transparent;
+}
+
+.localride-marker span {
+  position: relative;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 999px 999px 999px 4px;
+  color: #fff;
+  background: #0e7c66;
+  box-shadow: 0 10px 22px rgba(16, 36, 46, .28);
+  font-size: 13px;
+  font-weight: 900;
+  transform: rotate(-45deg);
+}
+
+.localride-marker span {
+  font-size: 0;
+}
+
+.localride-marker span::after {
+  font-size: 13px;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.localride-marker.pickup span::after { content: "A"; }
+.localride-marker.dropoff span {
+  background: #25435a;
+}
+.localride-marker.dropoff span::after { content: "B"; }
+.localride-marker.driver span {
+  background: #f2b705;
+  color: #10242e;
+}
+.localride-marker.driver span::after { content: "C"; }
+
+
 .form-grid { display: grid; gap: 14px; margin-top: 16px; }
 .form-grid.one { grid-template-columns: 1fr; }
 label { display: grid; gap: 7px; color: #667085; font-size: 13px; font-weight: 800; }

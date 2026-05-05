@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Car, CreditCard, LayoutDashboard, LocateFixed, LogOut, MapPin, ShieldCheck, UserRound } from "lucide-react";
+import L from "leaflet";
 import { MapContainer, Marker, Popup, TileLayer, Polyline, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
@@ -13,6 +14,9 @@ const defaultCenter = [
 ];
 const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
+const pickupIcon = createMapIcon("A", "pickup");
+const dropoffIcon = createMapIcon("B", "dropoff");
+const driverIcon = createMapIcon("C", "driver");
 
 function api(path, { token, ...options } = {}) {
   return fetch(`${API_URL}${path}`, {
@@ -335,11 +339,11 @@ function RealMap({ pickup, dropoff, route, drivers, onPickup, onDropoff }) {
       />
       <MapClicks />
       <FitRoute pickup={pickup} dropoff={dropoff} route={route} />
-      <Marker position={[pickup.lat, pickup.lng]}><Popup>Origen</Popup></Marker>
-      <Marker position={[dropoff.lat, dropoff.lng]}><Popup>Destino</Popup></Marker>
-      {route?.coordinates?.length > 0 && <Polyline positions={route.coordinates} />}
+      <Marker icon={pickupIcon} position={[pickup.lat, pickup.lng]}><Popup>Origen</Popup></Marker>
+      <Marker icon={dropoffIcon} position={[dropoff.lat, dropoff.lng]}><Popup>Destino</Popup></Marker>
+      {route?.coordinates?.length > 0 && <Polyline pathOptions={{ color: "#0e7c66", weight: 5, opacity: 0.88 }} positions={route.coordinates} />}
       {drivers.map((driver) => (
-        <Marker key={driver.id} position={[Number(driver.lat), Number(driver.lng)]}>
+        <Marker icon={driverIcon} key={driver.id} position={[Number(driver.lat), Number(driver.lng)]}>
           <Popup>{driver.name} - {driver.vehicle_model}</Popup>
         </Marker>
       ))}
@@ -840,6 +844,16 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function createMapIcon(label, type) {
+  return L.divIcon({
+    className: `localride-marker ${type}`,
+    html: `<span>${label}</span>`,
+    iconSize: [34, 42],
+    iconAnchor: [17, 38],
+    popupAnchor: [0, -36]
+  });
 }
 
 function paymentMethodLabel(value) {
