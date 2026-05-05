@@ -169,6 +169,7 @@ function RideView({ session, goTrack }) {
         token: session.token,
         body: JSON.stringify({ pickup, dropoff, paymentMethod: "mercado_pago" })
       });
+      localStorage.setItem("localride-last-trip-id", data.trip.id);
 
       try {
         const preference = await api("/api/payments/checkout-pro", {
@@ -248,9 +249,32 @@ function RealMap({ pickup, dropoff, drivers, onPickup, onDropoff }) {
 function TrackView({ session }) {
   const [trip, setTrip] = useState(null);
   const [location, setLocation] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    api("/api/trips/active", { token: session.token }).then((data) => setTrip(data.trip));
+    async function loadTrip() {
+      setError("");
+      try {
+        const data = await api("/api/trips/active", { token: session.token });
+        if (data.trip) {
+          setTrip(data.trip);
+          return;
+        }
+
+        const lastTripId = localStorage.getItem("localride-last-trip-id");
+        if (lastTripId) {
+          const fallback = await api(`/api/trips/${lastTripId}`, { token: session.token });
+          setTrip(fallback.trip);
+          return;
+        }
+
+        setTrip(null);
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+
+    loadTrip();
   }, [session.token]);
 
   useEffect(() => {
@@ -273,7 +297,7 @@ function TrackView({ session }) {
     setTrip(data.trip);
   }
 
-  if (!trip) return <EmptyState title="Sin viaje activo" text="Crea un pedido para ver seguimiento en vivo." />;
+  if (!trip) return <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />;
 
   return (
     <section className="grid two">

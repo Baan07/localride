@@ -87,6 +87,19 @@ tripsRouter.get("/active", requireAuth, async (req, res) => {
   res.json({ trip: result.rows[0] || null });
 });
 
+tripsRouter.get("/:id", requireAuth, async (req, res) => {
+  const result = await query("SELECT * FROM trips WHERE id = $1", [req.params.id]);
+  const trip = result.rows[0];
+  if (!trip) throw new HttpError(404, "Viaje no encontrado");
+
+  const isPassenger = trip.passenger_id === req.user.sub;
+  const isDriver = trip.driver_id === req.user.sub;
+  const isAdmin = req.user.role === "admin";
+  if (!isPassenger && !isDriver && !isAdmin) throw new HttpError(403, "No podes ver este viaje");
+
+  res.json({ trip });
+});
+
 tripsRouter.patch("/:id/status", requireAuth, async (req, res) => {
   const input = z.object({
     status: z.enum(["accepted", "driver_arriving", "in_progress", "completed", "cancelled"]),
