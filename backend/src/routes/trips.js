@@ -117,7 +117,7 @@ tripsRouter.patch("/:id/status", requireAuth, asyncHandler(async (req, res) => {
 
   const result = await query(
     `UPDATE trips
-     SET status = $2,
+     SET status = $2::trip_status,
          cancellation_reason = CASE WHEN $2 = 'cancelled' THEN $3 ELSE cancellation_reason END,
          started_at = CASE WHEN $2 = 'in_progress' THEN now() ELSE started_at END,
          completed_at = CASE WHEN $2 IN ('completed', 'cancelled') THEN now() ELSE completed_at END,
