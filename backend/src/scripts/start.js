@@ -1,19 +1,29 @@
 import { migrateDatabase } from "./migrate.js";
 import { seedDatabase } from "./seed.js";
+import { startServer } from "../server.js";
 
 const shouldSeed = String(process.env.RUN_SEED_ON_START || "").trim().toLowerCase() === "true";
 
-console.log("LocalRide startup", {
-  nodeEnv: process.env.NODE_ENV || "development",
-  runSeedOnStart: shouldSeed
-});
+try {
+  console.log("LocalRide startup", {
+    nodeEnv: process.env.NODE_ENV || "development",
+    runSeedOnStart: shouldSeed
+  });
 
-await migrateDatabase();
+  await migrateDatabase();
 
-if (shouldSeed) {
-  await seedDatabase();
-} else {
-  console.log("Database seed skipped. Set RUN_SEED_ON_START=true to enable it.");
+  if (shouldSeed) {
+    await seedDatabase();
+  } else {
+    console.log("Database seed skipped. Set RUN_SEED_ON_START=true to enable it.");
+  }
+
+  startServer();
+} catch (error) {
+  console.error("LocalRide startup failed", {
+    message: error.message,
+    code: error.code,
+    stack: error.stack
+  });
+  process.exit(1);
 }
-
-await import("../server.js");
