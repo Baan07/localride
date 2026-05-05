@@ -13,10 +13,23 @@ import { adminRouter } from "./routes/admin.js";
 
 export function createApp() {
   const app = express();
+  const allowedOrigins = new Set([
+    config.frontendUrl,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+  ].map(normalizeOrigin));
 
   app.set("trust proxy", 1);
   app.use(helmet());
-  app.use(cors({ origin: config.frontendUrl, credentials: true }));
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      const normalized = normalizeOrigin(origin);
+      const isAllowedNetlifyPreview = normalized.endsWith(".netlify.app");
+      return callback(null, allowedOrigins.has(normalized) || isAllowedNetlifyPreview);
+    },
+    credentials: true
+  }));
   app.use(express.json({ limit: "1mb" }));
   app.use(morgan("dev"));
   app.use(rateLimit({ windowMs: 60_000, max: 240 }));
@@ -32,4 +45,8 @@ export function createApp() {
   app.use(errorHandler);
 
   return app;
+}
+
+function normalizeOrigin(origin) {
+  return String(origin || "").replace(/\/+$/, "");
 }
