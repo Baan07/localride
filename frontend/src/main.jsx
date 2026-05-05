@@ -11,7 +11,8 @@ const defaultCenter = [
   Number(import.meta.env.VITE_DEFAULT_LAT || -38.9931),
   Number(import.meta.env.VITE_DEFAULT_LNG || -64.0942)
 ];
-const rioColoradoViewbox = "-64.22,-38.90,-63.98,-39.08";
+const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
+const serviceAreaQuery = "Rio Colorado, Rio Negro o La Adela, La Pampa, Argentina";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 
 function api(path, { token, ...options } = {}) {
@@ -276,7 +277,7 @@ function AddressSearch({ label, value, onText, onSelect }) {
   return (
     <label className="address-field">
       {label}
-      <input value={value} onChange={(event) => onText(event.target.value)} placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado`} />
+      <input value={value} onChange={(event) => onText(event.target.value)} placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado o La Adela`} />
       {(results.length > 0 || loading) && (
         <div className="suggestions">
           {loading && <span>Buscando calles...</span>}
@@ -647,13 +648,13 @@ function money(value) {
 
 async function searchRioColorado(query) {
   const params = new URLSearchParams({
-    q: `${query}, Rio Colorado, Rio Negro, Argentina`,
+    q: `${query}, ${serviceAreaQuery}`,
     format: "jsonv2",
     addressdetails: "1",
     countrycodes: "ar",
-    viewbox: rioColoradoViewbox,
+    viewbox: serviceAreaViewbox,
     bounded: "1",
-    limit: "6"
+    limit: "8"
   });
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
   if (!response.ok) throw new Error("No se pudo buscar la direccion");
@@ -698,7 +699,7 @@ function shortAddress(place) {
     address.road || address.pedestrian || address.amenity || address.name,
     address.house_number,
     address.suburb || address.neighbourhood,
-    address.town || address.city || "Rio Colorado"
+    address.town || address.city || address.village || "Rio Colorado / La Adela"
   ].filter(Boolean);
   return parts.length ? parts.join(" ") : place.display_name;
 }
