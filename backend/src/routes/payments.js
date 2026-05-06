@@ -37,7 +37,7 @@ paymentsRouter.post("/checkout-pro", requireAuth, asyncHandler(async (req, res) 
         items: [
           {
             id: trip.id,
-            title: `Viaje LocalRide ${trip.pickup_address} - ${trip.dropoff_address}`,
+            title: `Viaje Rio Movil ${trip.pickup_address} - ${trip.dropoff_address}`,
             quantity: 1,
             currency_id: "ARS",
             unit_price: Number(trip.fare_amount)

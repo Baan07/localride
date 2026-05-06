@@ -14,6 +14,8 @@ const defaultCenter = [
 ];
 const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
+const BRAND_NAME = "Rio Movil";
+const BRAND_LOGO = "/rio-movil-logo.png";
 const pickupIcon = createMapIcon("A", "pickup");
 const dropoffIcon = createMapIcon("B", "dropoff");
 const driverIcon = createMapIcon("C", "driver");
@@ -48,7 +50,7 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span>LR</span><strong>LocalRide</strong></div>
+        <div className="brand"><img src={BRAND_LOGO} alt={BRAND_NAME} /><strong>{BRAND_NAME}</strong></div>
         <button className={activeTab === "ride" ? "active" : ""} onClick={() => setActiveTab("ride")}><Car size={18} /> Pedir</button>
         <button className={activeTab === "track" ? "active" : ""} onClick={() => setActiveTab("track")}><LocateFixed size={18} /> Seguimiento</button>
         <button className={activeTab === "driver" ? "active" : ""} onClick={() => setActiveTab("driver")}><UserRound size={18} /> Conductor</button>
@@ -78,7 +80,7 @@ function AuthScreen({ onSession }) {
   const [mode, setMode] = useState("login");
   const [role, setRole] = useState("passenger");
   const [error, setError] = useState("");
-  const [credentials, setCredentials] = useState({ email: "pasajero@localride.test", password: "LocalRide123!" });
+  const [credentials, setCredentials] = useState({ email: "", password: "" });
 
   async function submit(event) {
     event.preventDefault();
@@ -98,7 +100,7 @@ function AuthScreen({ onSession }) {
   return (
     <main className="auth-screen">
       <section className="auth-panel">
-        <div className="brand auth-brand"><span>LR</span><strong>LocalRide</strong></div>
+        <div className="brand auth-brand"><img src={BRAND_LOGO} alt={BRAND_NAME} /><strong>{BRAND_NAME}</strong></div>
         <h1>{mode === "login" ? "Entrar" : "Crear cuenta"}</h1>
         <form onSubmit={submit} className="form-grid one">
           {mode === "register" && <input name="name" placeholder="Nombre completo" required />}
@@ -114,13 +116,6 @@ function AuthScreen({ onSession }) {
           {error && <p className="error">{error}</p>}
           <button className="primary">Continuar</button>
         </form>
-        {mode === "login" && (
-          <div className="demo-logins">
-            <button type="button" onClick={() => setCredentials({ email: "pasajero@localride.test", password: "LocalRide123!" })}>Pasajero demo</button>
-            <button type="button" onClick={() => setCredentials({ email: "ana@localride.test", password: "LocalRide123!" })}>Conductor Ana</button>
-            <button type="button" onClick={() => setCredentials({ email: "admin@localride.test", password: "LocalRide123!" })}>Admin</button>
-          </div>
-        )}
         <button className="link-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? "Crear una cuenta nueva" : "Ya tengo cuenta"}
         </button>
