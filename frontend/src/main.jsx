@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Car, CreditCard, LayoutDashboard, LocateFixed, LogOut, MapPin, ShieldCheck, UserRound } from "lucide-react";
 import L from "leaflet";
@@ -591,20 +591,31 @@ function CompletedTripCard({ session, trip, onRated }) {
 function DriverRequestsPanel({ session, onAccepted }) {
   const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const seenRequestIds = useRef(new Set());
+  const didInitialLoad = useRef(false);
 
   useEffect(() => {
     loadRequests();
-    const timer = setInterval(loadRequests, 10000);
+    const timer = setInterval(loadRequests, 5000);
     return () => clearInterval(timer);
   }, []);
 
   async function loadRequests() {
     try {
       const data = await api("/api/trips/driver/requests", { token: session.token });
-      setRequests(data.trips || []);
+      const nextRequests = data.trips || [];
+      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabled);
+      setRequests(nextRequests);
     } catch (err) {
       setMessage(err.message);
     }
+  }
+
+  function enableSound() {
+    playNotificationSound();
+    setSoundEnabled(true);
+    setMessage("Sonido de pedidos activado.");
   }
 
   async function acceptRequest(tripId) {
@@ -628,7 +639,10 @@ function DriverRequestsPanel({ session, onAccepted }) {
           <p className="eyebrow">Pedidos</p>
           <h2>Solicitudes pendientes</h2>
         </div>
-        <button className="secondary" onClick={loadRequests}>Actualizar</button>
+        <div className="mini-actions">
+          <button className="secondary" onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
+          <button className="secondary" onClick={loadRequests}>Actualizar</button>
+        </div>
       </div>
       {message && <p className={message.includes("aceptado") ? "ok" : "error"}>{message}</p>}
       <div className="request-box">
@@ -676,13 +690,16 @@ function DriverView({ session }) {
   const [trip, setTrip] = useState(null);
   const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const seenRequestIds = useRef(new Set());
+  const didInitialLoad = useRef(false);
   const disabled = session.user.role !== "driver";
 
   useEffect(() => {
     if (!disabled) {
       loadDriverTrip();
       loadRequests();
-      const timer = setInterval(loadRequests, 12000);
+      const timer = setInterval(loadRequests, 5000);
       return () => clearInterval(timer);
     }
   }, [disabled]);
@@ -716,10 +733,18 @@ function DriverView({ session }) {
   async function loadRequests() {
     try {
       const data = await api("/api/trips/driver/requests", { token: session.token });
-      setRequests(data.trips || []);
+      const nextRequests = data.trips || [];
+      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabled);
+      setRequests(nextRequests);
     } catch (err) {
       setMessage(err.message);
     }
+  }
+
+  function enableSound() {
+    playNotificationSound();
+    setSoundEnabled(true);
+    setMessage("Sonido de pedidos activado.");
   }
 
   async function acceptRequest(tripId) {
@@ -786,6 +811,7 @@ function DriverView({ session }) {
           </button>
           <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
           <button className="secondary" onClick={loadRequests}>Ver pedidos</button>
+          <button className="secondary" onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
           <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
           <div className="request-box">
@@ -1072,6 +1098,44 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function notifyForNewRequests(requests, seenRef, didInitialLoadRef, soundEnabled) {
+  const currentIds = new Set(requests.map((request) => request.id));
+  const hasNewRequest = [...currentIds].some((id) => !seenRef.current.has(id));
+
+  if (didInitialLoadRef.current && hasNewRequest && soundEnabled) {
+    playNotificationSound();
+  }
+
+  seenRef.current = currentIds;
+  didInitialLoadRef.current = true;
+}
+
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = new AudioContext();
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.24, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.42);
+    gain.connect(context.destination);
+
+    [660, 880].forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, context.currentTime + index * 0.12);
+      oscillator.connect(gain);
+      oscillator.start(context.currentTime + index * 0.12);
+      oscillator.stop(context.currentTime + index * 0.12 + 0.18);
+    });
+
+    setTimeout(() => context.close(), 700);
+  } catch {
+    // El sonido es una mejora de UX; si el navegador lo bloquea, la app sigue funcionando.
+  }
 }
 
 function roleLabel(value) {
