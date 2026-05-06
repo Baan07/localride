@@ -592,6 +592,7 @@ function DriverRequestsPanel({ session, onAccepted }) {
   const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEnabledRef = useRef(false);
   const seenRequestIds = useRef(new Set());
   const didInitialLoad = useRef(false);
 
@@ -605,7 +606,7 @@ function DriverRequestsPanel({ session, onAccepted }) {
     try {
       const data = await api("/api/trips/driver/requests", { token: session.token });
       const nextRequests = data.trips || [];
-      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabled);
+      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabledRef);
       setRequests(nextRequests);
     } catch (err) {
       setMessage(err.message);
@@ -614,6 +615,7 @@ function DriverRequestsPanel({ session, onAccepted }) {
 
   function enableSound() {
     playNotificationSound();
+    soundEnabledRef.current = true;
     setSoundEnabled(true);
     setMessage("Sonido de pedidos activado.");
   }
@@ -691,6 +693,7 @@ function DriverView({ session }) {
   const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const soundEnabledRef = useRef(false);
   const seenRequestIds = useRef(new Set());
   const didInitialLoad = useRef(false);
   const disabled = session.user.role !== "driver";
@@ -734,7 +737,7 @@ function DriverView({ session }) {
     try {
       const data = await api("/api/trips/driver/requests", { token: session.token });
       const nextRequests = data.trips || [];
-      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabled);
+      notifyForNewRequests(nextRequests, seenRequestIds, didInitialLoad, soundEnabledRef);
       setRequests(nextRequests);
     } catch (err) {
       setMessage(err.message);
@@ -743,6 +746,7 @@ function DriverView({ session }) {
 
   function enableSound() {
     playNotificationSound();
+    soundEnabledRef.current = true;
     setSoundEnabled(true);
     setMessage("Sonido de pedidos activado.");
   }
@@ -1100,11 +1104,11 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-function notifyForNewRequests(requests, seenRef, didInitialLoadRef, soundEnabled) {
+function notifyForNewRequests(requests, seenRef, didInitialLoadRef, soundEnabledRef) {
   const currentIds = new Set(requests.map((request) => request.id));
   const hasNewRequest = [...currentIds].some((id) => !seenRef.current.has(id));
 
-  if (didInitialLoadRef.current && hasNewRequest && soundEnabled) {
+  if (didInitialLoadRef.current && hasNewRequest && soundEnabledRef.current) {
     playNotificationSound();
   }
 
