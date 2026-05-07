@@ -448,6 +448,10 @@ select {
   .brand {
     display: none;
   }
+  .auth-brand {
+    display: flex;
+    margin-bottom: 22px;
+  }
   .sidebar button {
     justify-content: center;
     min-height: 48px;
