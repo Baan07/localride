@@ -21,7 +21,7 @@ const LOCAL_POPULAR_PLACES = [
     id: "la-anonima-rio-colorado",
     name: "La Anonima",
     label: "La Anonima - 9 de Julio 746 Rio Colorado",
-    aliases: ["la anonima", "anonima", "la anoni", "supermercado la anonima"],
+    aliases: ["la anonima", "anonima", "anoni", "la anoni", "supermercado la anonima"],
     lat: -38.98832,
     lng: -64.09719
   },
@@ -32,6 +32,30 @@ const LOCAL_POPULAR_PLACES = [
     aliases: ["cooperativa obrera", "coope", "cooperativa", "supermercado cooperativa"],
     lat: -38.99605,
     lng: -64.09215
+  },
+  {
+    id: "supermercado-dragon-rio-colorado",
+    name: "Supermercado Dragon",
+    label: "Supermercado Dragon - Av. Berutti 451 Rio Colorado",
+    aliases: ["supermercado dragon", "dragon", "super dragon"],
+    lat: -38.98895,
+    lng: -64.1002
+  },
+  {
+    id: "despensa-teresita-rio-colorado",
+    name: "Despensa Teresita",
+    label: "Despensa Teresita - Av. San Martin Rio Colorado",
+    aliases: ["despensa teresita", "teresita", "despensa"],
+    lat: -38.9962,
+    lng: -64.0952
+  },
+  {
+    id: "casa-aznarez-rio-colorado",
+    name: "Casa Aznarez",
+    label: "Casa Aznarez - Hipolito Yrigoyen 176 Rio Colorado",
+    aliases: ["casa aznarez", "aznarez", "ferreteria aznarez", "tienda aznarez"],
+    lat: -38.9914,
+    lng: -64.0964
   },
   {
     id: "plaza-san-martin-rio-colorado",
@@ -360,7 +384,21 @@ function AddressSearch({ label, value, onText, onSelect }) {
   return (
     <label className="address-field">
       {label}
-      <input value={value} onChange={(event) => onText(event.target.value)} placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado o La Adela`} />
+      <div className="address-input-wrap">
+        <input
+          value={value}
+          onChange={(event) => onText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Delete" && value) {
+              event.preventDefault();
+              setResults([]);
+              onText("");
+            }
+          }}
+          placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado o La Adela`}
+        />
+        {value && <button type="button" className="clear-input" aria-label={`Borrar ${label.toLowerCase()}`} onClick={() => { setResults([]); onText(""); }}>x</button>}
+      </div>
       {(results.length > 0 || loading) && (
         <div className="suggestions">
           {loading && <span>Buscando calles...</span>}
@@ -1272,12 +1310,16 @@ async function searchRioColorado(query) {
     structuredAddressParams(parsedAddress, "La Adela", "La Pampa")
   ] : [];
 
-  const results = await Promise.all([...structuredSearches, ...searches].map(searchAddress));
+  const resultSets = await Promise.allSettled([
+    ...structuredSearches.map(searchAddress),
+    ...searches.map(searchAddress),
+    searchOverpassPlaces(query)
+  ]);
   const byPlaceId = new Map();
   for (const place of localPlaces) {
     byPlaceId.set(place.place_id, place);
   }
-  for (const place of results.flat()) {
+  for (const place of resultSets.flatMap((result) => result.status === "fulfilled" ? result.value : [])) {
     const enhancedPlace = withTypedAddressLabel(place, query);
     byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
   }
@@ -1330,10 +1372,97 @@ function buildLocalSearches(query) {
 
 function popularPlaceCategory(normalizedQuery) {
   if (/(escuela|colegio|jardin|jardin de infantes|secundaria|primaria)/.test(normalizedQuery)) return "escuela";
-  if (/(supermercado|anonima|anonima|cooperativa obrera|mercado|almacen)/.test(normalizedQuery)) return "supermercado";
+  if (/(super|supermercado|anonima|cooperativa obrera|mercado|almacen|despensa|kiosco)/.test(normalizedQuery)) return "supermercado";
   if (/(hospital|clinica|sanatorio|salud|guardia)/.test(normalizedQuery)) return "hospital";
-  if (/(municipalidad|comisaria|policia|banco|terminal|plaza|club|farmacia)/.test(normalizedQuery)) return normalizedQuery;
+  if (/(municipalidad|comisaria|policia|banco|terminal|plaza|club|farmacia|tienda|negocio|ropa|ferreteria|panaderia|carniceria|libreria|veterinaria|heladeria|restaurant|restaurante|bar|cafe)/.test(normalizedQuery)) return normalizedQuery;
   return "";
+}
+
+async function searchOverpassPlaces(query) {
+  const normalizedQuery = normalizeText(query.trim());
+  if (normalizedQuery.length < 3 || parseStreetNumber(query)) return [];
+
+  const overpassQuery = `
+    [out:json][timeout:8];
+    (
+      node["name"](-39.10,-64.24,-38.88,-63.95);
+      way["name"](-39.10,-64.24,-38.88,-63.95);
+      relation["name"](-39.10,-64.24,-38.88,-63.95);
+    );
+    out center tags 80;
+  `;
+  const response = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body: new URLSearchParams({ data: overpassQuery })
+  });
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return (data.elements || [])
+    .filter((element) => isUsefulPlace(element.tags || {}))
+    .map(overpassElementToPlace)
+    .filter(Boolean)
+    .filter((place) => matchesPlaceQuery(place, normalizedQuery))
+    .slice(0, 8);
+}
+
+function isUsefulPlace(tags) {
+  return Boolean(
+    tags.shop ||
+    tags.amenity ||
+    tags.office ||
+    tags.tourism ||
+    tags.leisure ||
+    tags.craft ||
+    tags.brand ||
+    tags.operator
+  );
+}
+
+function overpassElementToPlace(element) {
+  const tags = element.tags || {};
+  const lat = element.lat ?? element.center?.lat;
+  const lon = element.lon ?? element.center?.lon;
+  if (!lat || !lon || !tags.name) return null;
+
+  const road = tags["addr:street"] || "";
+  const houseNumber = tags["addr:housenumber"] || "";
+  const city = tags["addr:city"] || "Rio Colorado / La Adela";
+  return {
+    place_id: `osm-${element.type}-${element.id}`,
+    lat: String(lat),
+    lon: String(lon),
+    name: tags.name,
+    localride_label: [tags.name, [road, houseNumber].filter(Boolean).join(" "), city].filter(Boolean).join(" "),
+    address: {
+      amenity: tags.amenity,
+      shop: tags.shop,
+      office: tags.office,
+      tourism: tags.tourism,
+      leisure: tags.leisure,
+      road,
+      house_number: houseNumber,
+      town: city
+    },
+    tags
+  };
+}
+
+function matchesPlaceQuery(place, normalizedQuery) {
+  const tags = place.tags || {};
+  const haystack = normalizeText([
+    place.name,
+    place.localride_label,
+    tags.shop,
+    tags.amenity,
+    tags.office,
+    tags.craft,
+    tags.brand,
+    tags.operator
+  ].filter(Boolean).join(" "));
+  const category = popularPlaceCategory(normalizedQuery);
+  return haystack.includes(normalizedQuery) || (category && haystack.includes(normalizeText(category)));
 }
 
 function structuredAddressParams(parsedAddress, city, state) {

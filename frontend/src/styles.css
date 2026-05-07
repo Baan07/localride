@@ -158,6 +158,36 @@ select {
   position: relative;
 }
 
+.address-input-wrap {
+  position: relative;
+}
+
+.address-input-wrap input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.clear-input {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #667085;
+  background: #eef2f7;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.clear-input:hover {
+  color: #10242e;
+  background: #d9e1ec;
+}
+
 .suggestions {
   position: absolute;
   top: calc(100% + 4px);
