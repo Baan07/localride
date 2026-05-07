@@ -1222,10 +1222,7 @@ function adminMetricLabel(value) {
 
 async function searchRioColorado(query) {
   const parsedAddress = parseStreetNumber(query);
-  const searches = [
-    `${query}, Rio Colorado, Rio Negro, Argentina`,
-    `${query}, La Adela, La Pampa, Argentina`
-  ];
+  const searches = buildLocalSearches(query);
 
   const structuredSearches = parsedAddress ? [
     structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
@@ -1236,9 +1233,39 @@ async function searchRioColorado(query) {
   const byPlaceId = new Map();
   for (const place of results.flat()) {
     const enhancedPlace = withTypedAddressLabel(place, query);
-    byPlaceId.set(enhancedPlace.place_id, enhancedPlace);
+    byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
   }
   return [...byPlaceId.values()].slice(0, 8);
+}
+
+function buildLocalSearches(query) {
+  const normalized = normalizeText(query);
+  const searches = [
+    `${query}, Rio Colorado, Rio Negro, Argentina`,
+    `${query}, La Adela, La Pampa, Argentina`
+  ];
+
+  if (!parseStreetNumber(query)) {
+    searches.unshift(query);
+  }
+
+  const popularCategory = popularPlaceCategory(normalized);
+  if (popularCategory) {
+    searches.push(
+      `${popularCategory} Rio Colorado Rio Negro Argentina`,
+      `${popularCategory} La Adela La Pampa Argentina`
+    );
+  }
+
+  return [...new Set(searches)];
+}
+
+function popularPlaceCategory(normalizedQuery) {
+  if (/(escuela|colegio|jardin|jardin de infantes|secundaria|primaria)/.test(normalizedQuery)) return "escuela";
+  if (/(supermercado|anonima|anonima|cooperativa obrera|mercado|almacen)/.test(normalizedQuery)) return "supermercado";
+  if (/(hospital|clinica|sanatorio|salud|guardia)/.test(normalizedQuery)) return "hospital";
+  if (/(municipalidad|comisaria|policia|banco|terminal|plaza|club|farmacia)/.test(normalizedQuery)) return normalizedQuery;
+  return "";
 }
 
 function structuredAddressParams(parsedAddress, city, state) {
@@ -1249,6 +1276,7 @@ function structuredAddressParams(parsedAddress, city, state) {
     country: "Argentina",
     format: "jsonv2",
     addressdetails: "1",
+    namedetails: "1",
     countrycodes: "ar",
     viewbox: serviceAreaViewbox,
     bounded: "1",
@@ -1261,6 +1289,7 @@ async function searchAddress(input) {
     q: input,
     format: "jsonv2",
     addressdetails: "1",
+    namedetails: "1",
     countrycodes: "ar",
     viewbox: serviceAreaViewbox,
     bounded: "1",
@@ -1309,11 +1338,19 @@ function displayAddress(place) {
 
 function shortAddress(place) {
   const address = place.address || {};
+  const placeName = place.name || place.namedetails?.name || address.amenity || address.shop || address.office || address.leisure || address.tourism || address.building;
+  const street = address.road || address.pedestrian || address.footway || address.path;
+  const city = address.town || address.city || address.village || "Rio Colorado / La Adela";
+  if (placeName && normalizeText(placeName) !== normalizeText(street || "")) {
+    const detail = [street, address.house_number].filter(Boolean).join(" ");
+    return [placeName, detail, city].filter(Boolean).join(" ");
+  }
+
   const parts = [
-    address.road || address.pedestrian || address.amenity || address.name,
+    street || placeName || address.name,
     address.house_number,
     address.suburb || address.neighbourhood,
-    address.town || address.city || address.village || "Rio Colorado / La Adela"
+    city
   ].filter(Boolean);
   return parts.length ? parts.join(" ") : place.display_name;
 }
