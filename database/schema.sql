@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS fare_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   city text NOT NULL DEFAULT 'Mi localidad',
   base_fare numeric(12,2) NOT NULL DEFAULT 900,
+  minimum_fare numeric(12,2) NOT NULL DEFAULT 1500,
   price_per_km numeric(12,2) NOT NULL DEFAULT 420,
   price_per_minute numeric(12,2) NOT NULL DEFAULT 80,
   platform_fee_percent numeric(5,2) NOT NULL DEFAULT 12,
@@ -91,6 +92,7 @@ CREATE INDEX IF NOT EXISTS trips_passenger_idx ON trips(passenger_id, status);
 
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating integer CHECK (passenger_rating BETWEEN 1 AND 5);
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating_comment text;
+ALTER TABLE fare_rules ADD COLUMN IF NOT EXISTS minimum_fare numeric(12,2) NOT NULL DEFAULT 1500;
 
 CREATE TABLE IF NOT EXISTS trip_locations (
   id bigserial PRIMARY KEY,
@@ -142,6 +144,6 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-INSERT INTO fare_rules(city, base_fare, price_per_km, price_per_minute, platform_fee_percent)
-VALUES ('Mi localidad', 900, 420, 80, 12)
+INSERT INTO fare_rules(city, base_fare, minimum_fare, price_per_km, price_per_minute, platform_fee_percent)
+VALUES ('Mi localidad', 900, 1500, 420, 80, 12)
 ON CONFLICT DO NOTHING;

@@ -1,6 +1,9 @@
 import { query } from "../db.js";
+import { assertServiceCoverage, serviceAreaInfo } from "./coverage.js";
 
 export async function estimateFare({ pickup, dropoff, route }) {
+  assertServiceCoverage(pickup, dropoff);
+
   const fareRule = await query("SELECT * FROM fare_rules WHERE active = true ORDER BY created_at DESC LIMIT 1");
   const rule = fareRule.rows[0];
 
@@ -12,14 +15,18 @@ export async function estimateFare({ pickup, dropoff, route }) {
     : Math.round((distanceMeters / 1000) * 180);
   const distanceKm = distanceMeters / 1000;
   const minutes = durationSeconds / 60;
-  const amount = Math.round(Number(rule.base_fare) + distanceKm * Number(rule.price_per_km) + minutes * Number(rule.price_per_minute));
+  const calculatedAmount = Math.round(Number(rule.base_fare) + distanceKm * Number(rule.price_per_km) + minutes * Number(rule.price_per_minute));
+  const amount = Math.max(calculatedAmount, Number(rule.minimum_fare || 0));
   const platformFee = Math.round(amount * (Number(rule.platform_fee_percent) / 100));
 
   return {
     city: rule.city,
+    serviceArea: serviceAreaInfo().name,
     distanceMeters,
     durationSeconds,
     amount,
+    calculatedAmount,
+    minimumFare: Number(rule.minimum_fare || 0),
     platformFee,
     currency: "ARS"
   };

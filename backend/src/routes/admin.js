@@ -64,6 +64,7 @@ adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(a
   const input = z.object({
     city: z.string().min(2),
     baseFare: z.number().min(0),
+    minimumFare: z.number().min(0),
     pricePerKm: z.number().min(0),
     pricePerMinute: z.number().min(0),
     platformFeePercent: z.number().min(0).max(50),
@@ -72,10 +73,10 @@ adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(a
 
   await query("UPDATE fare_rules SET active = false WHERE active = true");
   const result = await query(
-    `INSERT INTO fare_rules(city, base_fare, price_per_km, price_per_minute, platform_fee_percent, cancellation_grace_minutes)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO fare_rules(city, base_fare, minimum_fare, price_per_km, price_per_minute, platform_fee_percent, cancellation_grace_minutes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [input.city, input.baseFare, input.pricePerKm, input.pricePerMinute, input.platformFeePercent, input.cancellationGraceMinutes]
+    [input.city, input.baseFare, input.minimumFare, input.pricePerKm, input.pricePerMinute, input.platformFeePercent, input.cancellationGraceMinutes]
   );
 
   await audit({ actorId: req.user.sub, action: "admin.fare_rules_update", entityType: "fare_rule", entityId: result.rows[0].id, metadata: input, ip: req.ip });

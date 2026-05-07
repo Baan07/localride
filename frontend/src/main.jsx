@@ -209,6 +209,7 @@ function RideView({ session, goTrack }) {
   const [paymentMethod, setPaymentMethod] = useState("mercado_pago");
   const [carType, setCarType] = useState("standard");
   const [message, setMessage] = useState("");
+  const [estimateError, setEstimateError] = useState("");
 
   useEffect(() => {
     refreshNearby();
@@ -243,16 +244,22 @@ function RideView({ session, goTrack }) {
   async function refreshEstimateFor(nextPickup, nextDropoff) {
     const nextRoute = await fetchRoute(nextPickup, nextDropoff);
     setRoute(nextRoute);
-    const data = await api("/api/trips/estimate", {
-      method: "POST",
-      token: session.token,
-      body: JSON.stringify({
-        pickup: nextPickup,
-        dropoff: nextDropoff,
-        route: nextRoute ? { distanceMeters: nextRoute.distanceMeters, durationSeconds: nextRoute.durationSeconds } : undefined
-      })
-    });
-    setEstimate(data.estimate);
+    setEstimateError("");
+    try {
+      const data = await api("/api/trips/estimate", {
+        method: "POST",
+        token: session.token,
+        body: JSON.stringify({
+          pickup: nextPickup,
+          dropoff: nextDropoff,
+          route: nextRoute ? { distanceMeters: nextRoute.distanceMeters, durationSeconds: nextRoute.durationSeconds } : undefined
+        })
+      });
+      setEstimate(data.estimate);
+    } catch (err) {
+      setEstimate(null);
+      setEstimateError(err.message);
+    }
   }
 
   function selectPickup(place) {
@@ -345,11 +352,15 @@ function RideView({ session, goTrack }) {
           </label>
           <div className="fare-card">
             <span>Estimado</span>
-            <strong>{estimate ? money(estimate.amount) : "Calculando..."}</strong>
-            <small>{estimate ? `${Math.round(estimate.distanceMeters / 100) / 10} km por calles` : "Calculando ruta"}</small>
+            <strong>{estimate ? money(estimate.amount) : estimateError ? "Fuera de zona" : "Calculando..."}</strong>
+            <small>
+              {estimate
+                ? `${Math.round(estimate.distanceMeters / 100) / 10} km por calles${estimate.amount === estimate.minimumFare ? " · tarifa minima" : ""}`
+                : estimateError || "Calculando ruta"}
+            </small>
           </div>
           <button type="button" className="secondary" onClick={() => { refreshNearby(); refreshEstimate(); }}>Recalcular</button>
-          <button className="primary">{paymentMethod === "mercado_pago" ? "Confirmar y pagar con Mercado Pago" : "Confirmar viaje"}</button>
+          <button className="primary" disabled={Boolean(estimateError)}>{paymentMethod === "mercado_pago" ? "Confirmar y pagar con Mercado Pago" : "Confirmar viaje"}</button>
           {message && <p className="ok">{message}</p>}
         </form>
       </div>
@@ -1047,6 +1058,7 @@ function AdminView({ session }) {
     const body = {
       city: form.get("city"),
       baseFare: Number(form.get("baseFare")),
+      minimumFare: Number(form.get("minimumFare")),
       pricePerKm: Number(form.get("pricePerKm")),
       pricePerMinute: Number(form.get("pricePerMinute")),
       platformFeePercent: Number(form.get("platformFeePercent")),
@@ -1115,6 +1127,7 @@ function AdminView({ session }) {
             <form className="form-grid one" onSubmit={saveFareRule}>
               <label>Localidad<input name="city" defaultValue={fareRule.city} /></label>
               <label>Tarifa base<input name="baseFare" type="number" defaultValue={fareRule.base_fare} /></label>
+              <label>Tarifa minima<input name="minimumFare" type="number" defaultValue={fareRule.minimum_fare} /></label>
               <label>Precio por km<input name="pricePerKm" type="number" defaultValue={fareRule.price_per_km} /></label>
               <label>Precio por minuto<input name="pricePerMinute" type="number" defaultValue={fareRule.price_per_minute} /></label>
               <label>Comision plataforma %<input name="platformFeePercent" type="number" defaultValue={fareRule.platform_fee_percent} /></label>

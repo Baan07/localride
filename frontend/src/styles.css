@@ -8,6 +8,10 @@
 body { margin: 0; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
 
 .app-shell {
   display: grid;
