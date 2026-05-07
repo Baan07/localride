@@ -638,6 +638,12 @@ select {
     font-size: 28px;
   }
   .grid.two, .metrics { grid-template-columns: 1fr; }
+  .ride-map-panel {
+    order: 2;
+  }
+  .ride-form-panel {
+    order: 1;
+  }
   .leaflet-map { min-height: 360px; height: 52vh; }
   .tracking-map {
     min-height: 320px;
@@ -691,6 +697,26 @@ select {
   }
   .panel {
     padding: 14px;
+  }
+  .field-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .location-button {
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    white-space: normal;
+  }
+  .address-input-wrap input,
+  input,
+  select {
+    max-width: 100%;
+    font-size: 16px;
+  }
+  .suggestions {
+    max-height: 220px;
+    overflow: auto;
   }
   .leaflet-map {
     height: 48vh;

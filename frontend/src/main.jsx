@@ -377,7 +377,7 @@ function RideView({ session, goTrack }) {
 
   return (
     <section className="grid two">
-      <div className="panel map-panel">
+      <div className="panel map-panel ride-map-panel">
         <RealMap
           pickup={pickup}
           dropoff={dropoff}
@@ -387,7 +387,7 @@ function RideView({ session, goTrack }) {
           onDropoff={(point) => { setDropoff(point); refreshEstimateFor(pickup, point); }}
         />
       </div>
-      <div className="panel">
+      <div className="panel ride-form-panel">
         <p className="eyebrow">Nuevo viaje</p>
         <h2>Pedir coche</h2>
         <form className="form-grid one" onSubmit={createTrip}>
