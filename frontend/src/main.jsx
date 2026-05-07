@@ -479,6 +479,77 @@ function FitRoute({ pickup, dropoff, route }) {
   return null;
 }
 
+function TrackingMap({ trip, driverLocation }) {
+  const pickup = tripPoint(trip, "pickup");
+  const dropoff = tripPoint(trip, "dropoff");
+  const driver = driverLocation ? { lat: Number(driverLocation.lat), lng: Number(driverLocation.lng) } : null;
+  const [tripRoute, setTripRoute] = useState(null);
+  const [driverRoute, setDriverRoute] = useState(null);
+  const driverTarget = trip.status === "in_progress" ? dropoff : pickup;
+
+  useEffect(() => {
+    let active = true;
+    if (!pickup || !dropoff) {
+      setTripRoute(null);
+      return () => { active = false; };
+    }
+
+    fetchRoute(pickup, dropoff).then((route) => {
+      if (active) setTripRoute(route);
+    });
+    return () => { active = false; };
+  }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng]);
+
+  useEffect(() => {
+    let active = true;
+    if (!driver || !driverTarget) {
+      setDriverRoute(null);
+      return () => { active = false; };
+    }
+
+    fetchRoute(driver, driverTarget).then((route) => {
+      if (active) setDriverRoute(route);
+    });
+    return () => { active = false; };
+  }, [driver?.lat, driver?.lng, driverTarget?.lat, driverTarget?.lng]);
+
+  if (!pickup || !dropoff) {
+    return <div className="tracking-map-placeholder">Mapa no disponible para este viaje.</div>;
+  }
+
+  const tripLine = tripRoute?.coordinates?.length ? tripRoute.coordinates : [[pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng]];
+  const driverLine = driver && driverTarget
+    ? (driverRoute?.coordinates?.length ? driverRoute.coordinates : [[driver.lat, driver.lng], [driverTarget.lat, driverTarget.lng]])
+    : [];
+
+  return (
+    <MapContainer center={[pickup.lat, pickup.lng]} zoom={14} className="leaflet-map tracking-map">
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <FitTrackingMap points={[pickup, dropoff, driver].filter(Boolean)} route={driverLine.length ? driverLine : tripLine} />
+      <Polyline pathOptions={{ color: "#0e7c66", weight: 5, opacity: 0.86 }} positions={tripLine} />
+      {driverLine.length > 0 && <Polyline pathOptions={{ color: "#1677ff", weight: 4, opacity: 0.82, dashArray: "8 8" }} positions={driverLine} />}
+      <Marker icon={pickupIcon} position={[pickup.lat, pickup.lng]}><Popup>Origen</Popup></Marker>
+      <Marker icon={dropoffIcon} position={[dropoff.lat, dropoff.lng]}><Popup>Destino</Popup></Marker>
+      {driver && <Marker icon={driverIcon} position={[driver.lat, driver.lng]}><Popup>Conductor</Popup></Marker>}
+    </MapContainer>
+  );
+}
+
+function FitTrackingMap({ points, route }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const routePoints = route?.length ? route : points.map((point) => [point.lat, point.lng]);
+    if (routePoints.length >= 2) map.fitBounds(routePoints, { padding: [44, 44], maxZoom: 16 });
+    else if (points[0]) map.setView([points[0].lat, points[0].lng], 15);
+  }, [map, points, route]);
+
+  return null;
+}
+
 function TrackView({ session }) {
   const [trip, setTrip] = useState(null);
   const [history, setHistory] = useState([]);
@@ -645,9 +716,14 @@ function TrackView({ session }) {
               <dt>Patente</dt><dd>{trip.plate}</dd>
             </>
           )}
-          <dt>Conductor</dt><dd>{driverApproachLabel(trip, location)}</dd>
+          <dt>Ubicacion conductor</dt><dd>{driverApproachLabel(trip, location)}</dd>
         </dl>
       </div>
+      <section className="panel tracking-map-panel">
+        <p className="eyebrow">Mapa en vivo</p>
+        <h2>{trackingMapLabel(trip, location)}</h2>
+        <TrackingMap trip={trip} driverLocation={location} />
+      </section>
       <TripHistory trips={history} />
     </section>
   );
@@ -1025,6 +1101,10 @@ function DriverView({ session }) {
                 <dt>Distancia</dt><dd>{formatKm(trip.distance_meters)}</dd>
                 <dt>Pago</dt><dd>{paymentMethodLabel(trip.payment_method)}</dd>
               </dl>
+              <div className="actions navigation-actions">
+                <button className="secondary" onClick={() => openNavigationTo(tripPoint(trip, "pickup"))}>Ir al origen</button>
+                <button className="secondary" onClick={() => openNavigationTo(tripPoint(trip, "dropoff"))}>Ir al destino</button>
+              </div>
               <div className="actions">
                 <button className="secondary" onClick={() => updateDriverTripStatus("driver_arriving")}>En camino</button>
                 <button className="secondary" onClick={() => updateDriverTripStatus("in_progress")}>Iniciar</button>
@@ -1356,6 +1436,26 @@ function locationFromTrip(trip) {
     lng: Number(trip.driver_lng),
     at: trip.driver_location_at
   };
+}
+
+function tripPoint(trip, type) {
+  const lat = Number(trip?.[`${type}_lat`]);
+  const lng = Number(trip?.[`${type}_lng`]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function openNavigationTo(point) {
+  if (!point) return;
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${point.lat},${point.lng}&travelmode=driving`, "_blank", "noopener,noreferrer");
+}
+
+function trackingMapLabel(trip, location) {
+  if (!location) return "Esperando ubicacion del conductor";
+  const target = trip.status === "in_progress" ? tripPoint(trip, "dropoff") : tripPoint(trip, "pickup");
+  const distance = distanceMetersBetween(location, target);
+  if (!distance) return "Ubicacion del conductor recibida";
+  return trip.status === "in_progress" ? `A ${formatKm(distance)} del destino` : `A ${formatKm(distance)} del origen`;
 }
 
 function formatDateTime(value) {

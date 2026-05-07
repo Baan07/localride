@@ -523,6 +523,30 @@ select {
   font-size: 13px;
 }
 
+.tracking-map-panel {
+  grid-column: 1 / -1;
+}
+
+.tracking-map {
+  height: min(54vh, 520px);
+  min-height: 340px;
+}
+
+.tracking-map-placeholder {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  border: 1px dashed #bdd8d1;
+  border-radius: 8px;
+  color: #667085;
+  background: #f7fafc;
+  text-align: center;
+}
+
+.navigation-actions {
+  padding-top: 2px;
+}
+
 @keyframes requestPulse {
   0%, 100% { box-shadow: 0 14px 32px rgba(31, 44, 71, .12); }
   50% { box-shadow: 0 0 0 4px rgba(14, 124, 102, .18), 0 20px 40px rgba(14, 124, 102, .2); }
@@ -574,6 +598,10 @@ select {
   }
   .grid.two, .metrics { grid-template-columns: 1fr; }
   .leaflet-map { min-height: 360px; height: 52vh; }
+  .tracking-map {
+    min-height: 320px;
+    height: 44vh;
+  }
   .map-panel {
     padding: 10px;
   }
@@ -626,6 +654,10 @@ select {
   .leaflet-map {
     height: 48vh;
     min-height: 310px;
+  }
+  .tracking-map {
+    height: 42vh;
+    min-height: 280px;
   }
   .form-grid {
     gap: 12px;
