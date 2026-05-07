@@ -30,7 +30,10 @@ async function fetchTripDetails(id) {
        d.vehicle_model,
        d.vehicle_color,
        d.plate,
-       d.rating AS driver_rating
+       d.rating AS driver_rating,
+       ST_Y(d.last_location::geometry) AS driver_lat,
+       ST_X(d.last_location::geometry) AS driver_lng,
+       d.last_location_at AS driver_location_at
      FROM trips t
      LEFT JOIN users driver ON driver.id = t.driver_id
      LEFT JOIN driver_profiles d ON d.user_id = t.driver_id
@@ -108,7 +111,10 @@ tripsRouter.get("/driver/requests", requireAuth, requireRole("driver"), asyncHan
        t.created_at,
        ST_Distance(d.last_location, t.pickup_location) AS distance_to_pickup_meters
      FROM trips t
-     LEFT JOIN driver_profiles d ON d.user_id = $1
+     JOIN driver_profiles d ON d.user_id = $1
+       AND d.online = true
+       AND d.verification_status = 'approved'
+       AND d.last_location IS NOT NULL
      WHERE t.status = 'requested'
        AND t.driver_id IS NULL
        AND NOT EXISTS (
@@ -153,6 +159,13 @@ tripsRouter.post("/:id/accept", requireAuth, requireRole("driver"), asyncHandler
      WHERE id = $1
        AND status = 'requested'
        AND driver_id IS NULL
+       AND EXISTS (
+         SELECT 1
+         FROM driver_profiles d
+         WHERE d.user_id = $2
+           AND d.online = true
+           AND d.verification_status = 'approved'
+       )
      RETURNING id`,
     [req.params.id, req.user.sub]
   );
@@ -176,7 +189,10 @@ tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
        d.vehicle_model,
        d.vehicle_color,
        d.plate,
-       d.rating AS driver_rating
+       d.rating AS driver_rating,
+       ST_Y(d.last_location::geometry) AS driver_lat,
+       ST_X(d.last_location::geometry) AS driver_lng,
+       d.last_location_at AS driver_location_at
      FROM trips t
      LEFT JOIN users driver ON driver.id = t.driver_id
      LEFT JOIN driver_profiles d ON d.user_id = t.driver_id

@@ -105,11 +105,16 @@ function App() {
   const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("localride-session") || "null"));
   const initialPaymentRoute = getPaymentRoute();
   const [activeTab, setActiveTab] = useState(initialPaymentRoute ? "payments" : "ride");
+  const isDriver = session?.user.role === "driver";
 
   useEffect(() => {
     if (session) localStorage.setItem("localride-session", JSON.stringify(session));
     else localStorage.removeItem("localride-session");
   }, [session]);
+
+  useEffect(() => {
+    if (isDriver && (activeTab === "ride" || activeTab === "track")) setActiveTab("driver");
+  }, [isDriver, activeTab]);
 
   if (!session) return <AuthScreen onSession={setSession} />;
 
@@ -117,9 +122,9 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><img src={BRAND_LOGO} alt={BRAND_NAME} /><strong>{BRAND_NAME}</strong></div>
-        <button className={activeTab === "ride" ? "active" : ""} onClick={() => setActiveTab("ride")}><Car size={18} /> Pedir</button>
-        <button className={activeTab === "track" ? "active" : ""} onClick={() => setActiveTab("track")}><LocateFixed size={18} /> Seguimiento</button>
-        <button className={activeTab === "driver" ? "active" : ""} onClick={() => setActiveTab("driver")}><UserRound size={18} /> Conductor</button>
+        {!isDriver && <button className={activeTab === "ride" ? "active" : ""} onClick={() => setActiveTab("ride")}><Car size={18} /> Pedir</button>}
+        {!isDriver && <button className={activeTab === "track" ? "active" : ""} onClick={() => setActiveTab("track")}><LocateFixed size={18} /> Seguimiento</button>}
+        {isDriver && <button className={activeTab === "driver" ? "active" : ""} onClick={() => setActiveTab("driver")}><UserRound size={18} /> Panel conductor</button>}
         <button className={activeTab === "payments" ? "active" : ""} onClick={() => setActiveTab("payments")}><CreditCard size={18} /> Pagos</button>
         <button className={activeTab === "admin" ? "active" : ""} onClick={() => setActiveTab("admin")}><LayoutDashboard size={18} /> Admin</button>
         <button className="logout" onClick={() => setSession(null)}><LogOut size={18} /> Salir</button>
@@ -132,9 +137,9 @@ function App() {
           </div>
           <span className="role"><ShieldCheck size={16} /> {session.user.role}</span>
         </header>
-        {activeTab === "ride" && <RideView session={session} goTrack={() => setActiveTab("track")} />}
-        {activeTab === "track" && <TrackView session={session} />}
-        {activeTab === "driver" && <DriverView session={session} />}
+        {activeTab === "ride" && !isDriver && <RideView session={session} goTrack={() => setActiveTab("track")} />}
+        {activeTab === "track" && !isDriver && <TrackView session={session} />}
+        {(activeTab === "driver" || (isDriver && (activeTab === "ride" || activeTab === "track"))) && <DriverView session={session} />}
         {activeTab === "payments" && <PaymentsView session={session} initialStatus={initialPaymentRoute} />}
         {activeTab === "admin" && <AdminView session={session} />}
       </main>
@@ -495,6 +500,7 @@ function TrackView({ session }) {
             setTrip(null);
           } else {
             setTrip(data.trip);
+            setLocation(locationFromTrip(data.trip));
           }
           return;
         }
@@ -507,6 +513,7 @@ function TrackView({ session }) {
             setTrip(null);
           } else {
             setTrip(fallback.trip);
+            setLocation(locationFromTrip(fallback.trip));
           }
           return;
         }
@@ -532,6 +539,7 @@ function TrackView({ session }) {
           localStorage.setItem("localride-last-completed-trip-id", data.trip.id);
         } else {
           setTrip(data.trip);
+          setLocation((current) => locationFromTrip(data.trip) || current);
         }
       }
       if (data.type === "driver.location") setLocation(data.location);
@@ -842,12 +850,28 @@ function DriverView({ session }) {
 
   useEffect(() => {
     if (!disabled) {
+      loadDriverProfile();
       loadDriverTrip();
-      loadRequests();
-      const timer = setInterval(loadRequests, 5000);
-      return () => clearInterval(timer);
     }
   }, [disabled]);
+
+  useEffect(() => {
+    if (!disabled) {
+      if (online) loadRequests(true);
+      else setRequests([]);
+      const timer = setInterval(() => loadRequests(), 5000);
+      return () => clearInterval(timer);
+    }
+  }, [disabled, online]);
+
+  async function loadDriverProfile() {
+    try {
+      const data = await api("/api/drivers/me/profile", { token: session.token });
+      setOnline(Boolean(data.profile?.online));
+    } catch {
+      setOnline(false);
+    }
+  }
 
   async function updateAvailability(next) {
     setOnline(next);
@@ -858,9 +882,18 @@ function DriverView({ session }) {
         token: session.token,
         body: JSON.stringify({ online: next, lat: position.lat, lng: position.lng })
       });
-      setMessage(next ? "Conductor online." : "Conductor fuera de linea.");
+      if (next) {
+        playNotificationSound();
+        soundEnabledRef.current = true;
+        setSoundEnabled(true);
+      } else {
+        soundEnabledRef.current = false;
+        setSoundEnabled(false);
+        setRequests([]);
+      }
+      setMessage(next ? "Conductor online. Sonido de pedidos activado." : "Conductor fuera de linea.");
       await loadDriverTrip();
-      await loadRequests();
+      if (next) await loadRequests(true);
     } catch (err) {
       setMessage(err.message);
     }
@@ -875,7 +908,11 @@ function DriverView({ session }) {
     }
   }
 
-  async function loadRequests() {
+  async function loadRequests(forceOnline = false) {
+    if (!forceOnline && !online) {
+      setRequests([]);
+      return;
+    }
     try {
       const data = await api("/api/trips/driver/requests", { token: session.token });
       const nextRequests = data.trips || [];
@@ -969,13 +1006,14 @@ function DriverView({ session }) {
             {online ? "Salir de linea" : "Ponerme online"}
           </button>
           <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
-          <button className="secondary" onClick={loadRequests}>Ver pedidos</button>
-          <button className="secondary" onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
+          <button className="secondary" disabled={!online} onClick={() => loadRequests(true)}>Ver pedidos</button>
+          <button className="secondary" disabled={!online} onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
           <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
           <div className="request-box">
             <strong>Pedidos disponibles</strong>
-            {requests.length === 0 && <span>No hay pedidos pendientes.</span>}
+            {!online && <span>Conectate para recibir pedidos.</span>}
+            {online && requests.length === 0 && <span>No hay pedidos pendientes.</span>}
             {requests.map((request) => (
               <DriverRequestCard key={request.id} request={request} onAccept={acceptRequest} onReject={rejectRequest} />
             ))}
@@ -1280,6 +1318,15 @@ function paymentMethodLabel(value) {
 
 function vehicleLabel(driver) {
   return [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(" ") || "Vehiculo asignado";
+}
+
+function locationFromTrip(trip) {
+  if (!trip?.driver_lat || !trip?.driver_lng) return null;
+  return {
+    lat: Number(trip.driver_lat),
+    lng: Number(trip.driver_lng),
+    at: trip.driver_location_at
+  };
 }
 
 function formatDateTime(value) {

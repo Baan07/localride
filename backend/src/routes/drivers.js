@@ -18,6 +18,11 @@ driversRouter.get("/nearby", requireAuth, asyncHandler(async (req, res) => {
   res.json({ drivers: await findNearbyDrivers(input) });
 }));
 
+driversRouter.get("/me/profile", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const result = await query("SELECT * FROM driver_profiles WHERE user_id = $1", [req.user.sub]);
+  res.json({ profile: result.rows[0] || null });
+}));
+
 driversRouter.put("/me/profile", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const input = z.object({
     vehicleMake: z.string().min(2),
