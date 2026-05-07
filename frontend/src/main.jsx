@@ -324,7 +324,7 @@ function AddressSearch({ label, value, onText, onSelect }) {
           {loading && <span>Buscando calles...</span>}
           {results.map((place) => (
             <button key={place.place_id} type="button" onClick={() => { onSelect(place); setResults([]); }}>
-              {shortAddress(place)}
+              {displayAddress(place)}
             </button>
           ))}
         </div>
@@ -916,6 +916,7 @@ function AdminView({ session }) {
   const [fareRule, setFareRule] = useState(null);
   const [message, setMessage] = useState("");
   const [userActionMessage, setUserActionMessage] = useState("");
+  const [driverDrafts, setDriverDrafts] = useState({});
 
   useEffect(() => {
     if (session.user.role === "admin") {
@@ -936,6 +937,19 @@ function AdminView({ session }) {
       setUsers(usersData.users || []);
       setTrips(tripsData.trips || []);
       setFareRule(fareData.fareRule);
+      setDriverDrafts((current) => {
+        const next = { ...current };
+        for (const user of usersData.users || []) {
+          if (user.role !== "driver" || next[user.id]) continue;
+          next[user.id] = {
+            vehicleMake: user.vehicle_make || "",
+            vehicleModel: user.vehicle_model || "",
+            vehicleColor: user.vehicle_color || "",
+            plate: user.plate || ""
+          };
+        }
+        return next;
+      });
     } catch (err) {
       setMessage(err.message);
     }
@@ -966,13 +980,20 @@ function AdminView({ session }) {
     }
   }
 
+  function updateDriverDraft(userId, field, value) {
+    setDriverDrafts((current) => ({
+      ...current,
+      [userId]: { ...(current[userId] || {}), [field]: value }
+    }));
+  }
+
   async function verifyDriver(userId, status) {
     setUserActionMessage("");
     try {
       await api(`/api/admin/drivers/${userId}/verification`, {
         method: "PATCH",
         token: session.token,
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, ...(driverDrafts[userId] || {}) })
       });
       setMessage(`Conductor ${verificationLabel(status).toLowerCase()}.`);
       await loadAdminData();
@@ -997,7 +1018,7 @@ function AdminView({ session }) {
             <div className="metric" key={key}><span>{adminMetricLabel(key)}</span><strong>{String(value)}</strong></div>
           ))}
         </div>
-        {message && <p className={message.includes("actualiz") ? "ok" : "error"}>{message}</p>}
+        {message && <p className="ok">{message}</p>}
       </div>
 
       <div className="grid two">
@@ -1027,7 +1048,15 @@ function AdminView({ session }) {
                 <div>
                   <strong>{user.name}</strong>
                   <span>{user.email} · {roleLabel(user.role)}</span>
-                  {user.role === "driver" && <span>{user.vehicle_make} {user.vehicle_model} · {user.plate || "Sin patente"} · {verificationLabel(user.verification_status)}</span>}
+                  {user.role === "driver" && <span>{adminVehicleLabel(user)} · {verificationLabel(user.verification_status)}</span>}
+                  {user.role === "driver" && !hasVehicleProfile(user) && (
+                    <div className="admin-vehicle-fields">
+                      <input value={driverDrafts[user.id]?.vehicleMake || ""} onChange={(event) => updateDriverDraft(user.id, "vehicleMake", event.target.value)} placeholder="Marca" />
+                      <input value={driverDrafts[user.id]?.vehicleModel || ""} onChange={(event) => updateDriverDraft(user.id, "vehicleModel", event.target.value)} placeholder="Modelo" />
+                      <input value={driverDrafts[user.id]?.vehicleColor || ""} onChange={(event) => updateDriverDraft(user.id, "vehicleColor", event.target.value)} placeholder="Color" />
+                      <input value={driverDrafts[user.id]?.plate || ""} onChange={(event) => updateDriverDraft(user.id, "plate", event.target.value)} placeholder="Patente" />
+                    </div>
+                  )}
                 </div>
                 {user.role === "driver" && (
                   <div className="mini-actions">
@@ -1173,6 +1202,15 @@ function verificationLabel(value) {
   }[value] || value;
 }
 
+function hasVehicleProfile(user) {
+  return Boolean(user.vehicle_make && user.vehicle_model && user.vehicle_color && user.plate);
+}
+
+function adminVehicleLabel(user) {
+  if (!hasVehicleProfile(user)) return "Datos del vehiculo incompletos";
+  return `${user.vehicle_color} ${user.vehicle_make} ${user.vehicle_model} · ${user.plate}`;
+}
+
 function adminMetricLabel(value) {
   return {
     tripsToday: "Viajes hoy",
@@ -1183,22 +1221,44 @@ function adminMetricLabel(value) {
 }
 
 async function searchRioColorado(query) {
+  const parsedAddress = parseStreetNumber(query);
   const searches = [
     `${query}, Rio Colorado, Rio Negro, Argentina`,
     `${query}, La Adela, La Pampa, Argentina`
   ];
 
-  const results = await Promise.all(searches.map(searchAddress));
+  const structuredSearches = parsedAddress ? [
+    structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
+    structuredAddressParams(parsedAddress, "La Adela", "La Pampa")
+  ] : [];
+
+  const results = await Promise.all([...structuredSearches, ...searches].map(searchAddress));
   const byPlaceId = new Map();
   for (const place of results.flat()) {
-    byPlaceId.set(place.place_id, place);
+    const enhancedPlace = withTypedAddressLabel(place, query);
+    byPlaceId.set(enhancedPlace.place_id, enhancedPlace);
   }
   return [...byPlaceId.values()].slice(0, 8);
 }
 
-async function searchAddress(q) {
-  const params = new URLSearchParams({
-    q,
+function structuredAddressParams(parsedAddress, city, state) {
+  return new URLSearchParams({
+    street: `${parsedAddress.number} ${parsedAddress.street}`,
+    city,
+    state,
+    country: "Argentina",
+    format: "jsonv2",
+    addressdetails: "1",
+    countrycodes: "ar",
+    viewbox: serviceAreaViewbox,
+    bounded: "1",
+    limit: "5"
+  });
+}
+
+async function searchAddress(input) {
+  const params = input instanceof URLSearchParams ? input : new URLSearchParams({
+    q: input,
     format: "jsonv2",
     addressdetails: "1",
     countrycodes: "ar",
@@ -1237,10 +1297,14 @@ async function fetchRoute(pickup, dropoff) {
 
 function placeToPoint(place) {
   return {
-    address: shortAddress(place),
+    address: displayAddress(place),
     lat: Number(place.lat),
     lng: Number(place.lon)
   };
+}
+
+function displayAddress(place) {
+  return place.localride_label || shortAddress(place);
 }
 
 function shortAddress(place) {
@@ -1252,6 +1316,36 @@ function shortAddress(place) {
     address.town || address.city || address.village || "Rio Colorado / La Adela"
   ].filter(Boolean);
   return parts.length ? parts.join(" ") : place.display_name;
+}
+
+function parseStreetNumber(value) {
+  const match = value.trim().match(/^(.+?)\s+(\d+[a-zA-Z]?)$/);
+  if (!match) return null;
+  return { street: match[1].trim(), number: match[2].trim() };
+}
+
+function withTypedAddressLabel(place, query) {
+  const parsedAddress = parseStreetNumber(query);
+  const address = place.address || {};
+  const road = address.road || address.pedestrian || address.name;
+  if (!parsedAddress || address.house_number || !road) return place;
+
+  const roadMatches = normalizeText(parsedAddress.street).includes(normalizeText(road)) || normalizeText(road).includes(normalizeText(parsedAddress.street));
+  if (!roadMatches) return place;
+
+  const city = address.town || address.city || address.village || "Rio Colorado / La Adela";
+  return {
+    ...place,
+    localride_label: `${toTitleCase(parsedAddress.street)} ${parsedAddress.number} ${city}`
+  };
+}
+
+function normalizeText(value) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function toTitleCase(value) {
+  return value.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 }
 
 function tripStatusLabel(status) {

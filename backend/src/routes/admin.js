@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { query } from "../db.js";
-import { asyncHandler } from "../errors.js";
+import { HttpError, asyncHandler } from "../errors.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
 
@@ -83,11 +83,59 @@ adminRouter.put("/fare-rules", requireAuth, requireRole("admin"), asyncHandler(a
 }));
 
 adminRouter.patch("/drivers/:id/verification", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
-  const input = z.object({ status: z.enum(["pending", "approved", "rejected"]) }).parse(req.body);
-  const result = await query(
-    "UPDATE driver_profiles SET verification_status = $2 WHERE user_id = $1 RETURNING *",
-    [req.params.id, input.status]
-  );
+  const input = z.object({
+    status: z.enum(["pending", "approved", "rejected"]),
+    vehicleMake: z.string().optional(),
+    vehicleModel: z.string().optional(),
+    vehicleColor: z.string().optional(),
+    plate: z.string().optional()
+  }).parse(req.body);
+
+  const user = await query("SELECT id, role FROM users WHERE id = $1", [req.params.id]);
+  if (!user.rows[0] || user.rows[0].role !== "driver") throw new HttpError(404, "Conductor no encontrado");
+
+  const existing = await query("SELECT * FROM driver_profiles WHERE user_id = $1", [req.params.id]);
+  let result;
+
+  if (!existing.rows[0]) {
+    const missingVehicleData = !input.vehicleMake?.trim() || !input.vehicleModel?.trim() || !input.vehicleColor?.trim() || !input.plate?.trim();
+    if (missingVehicleData) {
+      throw new HttpError(422, "Carga marca, modelo, color y patente antes de aprobar este conductor");
+    }
+
+    result = await query(
+      `INSERT INTO driver_profiles(user_id, vehicle_make, vehicle_model, vehicle_color, plate, verification_status)
+       VALUES ($1, $2, $3, $4, upper($5), $6)
+       RETURNING *`,
+      [
+        req.params.id,
+        input.vehicleMake.trim(),
+        input.vehicleModel.trim(),
+        input.vehicleColor.trim(),
+        input.plate.trim(),
+        input.status
+      ]
+    );
+  } else {
+    result = await query(
+      `UPDATE driver_profiles
+       SET verification_status = $2,
+           vehicle_make = COALESCE(NULLIF($3, ''), vehicle_make),
+           vehicle_model = COALESCE(NULLIF($4, ''), vehicle_model),
+           vehicle_color = COALESCE(NULLIF($5, ''), vehicle_color),
+           plate = COALESCE(NULLIF(upper($6), ''), plate)
+       WHERE user_id = $1
+       RETURNING *`,
+      [
+        req.params.id,
+        input.status,
+        input.vehicleMake?.trim() || "",
+        input.vehicleModel?.trim() || "",
+        input.vehicleColor?.trim() || "",
+        input.plate?.trim() || ""
+      ]
+    );
+  }
 
   await audit({ actorId: req.user.sub, action: "admin.driver_verification", entityType: "driver_profile", entityId: req.params.id, metadata: input, ip: req.ip });
   res.json({ profile: result.rows[0] });

@@ -235,6 +235,18 @@ select {
   margin-bottom: 0;
 }
 
+.admin-vehicle-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.admin-vehicle-fields input {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
 .fare-card, .metric {
   border: 1px solid #d9e1ec;
   border-radius: 8px;
