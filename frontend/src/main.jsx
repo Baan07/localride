@@ -360,6 +360,7 @@ function RideView({ session, goTrack }) {
 function AddressSearch({ label, value, onText, onSelect }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (value.trim().length < 3) {
@@ -368,13 +369,18 @@ function AddressSearch({ label, value, onText, onSelect }) {
     }
 
     const timer = setTimeout(async () => {
-      setLoading(true);
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      const localResults = searchLocalPopularPlaces(value);
+      setResults(localResults);
+      setLoading(localResults.length === 0);
       try {
-        setResults(await searchRioColorado(value));
+        const nextResults = await searchRioColorado(value, localResults);
+        if (requestIdRef.current === requestId) setResults(nextResults);
       } catch {
-        setResults([]);
+        if (requestIdRef.current === requestId && localResults.length === 0) setResults([]);
       } finally {
-        setLoading(false);
+        if (requestIdRef.current === requestId) setLoading(false);
       }
     }, 450);
 
@@ -1300,9 +1306,8 @@ function adminMetricLabel(value) {
   }[value] || value;
 }
 
-async function searchRioColorado(query) {
+async function searchRioColorado(query, localPlaces = searchLocalPopularPlaces(query)) {
   const parsedAddress = parseStreetNumber(query);
-  const localPlaces = searchLocalPopularPlaces(query);
   const searches = buildLocalSearches(query);
 
   const structuredSearches = parsedAddress ? [
@@ -1355,7 +1360,7 @@ function buildLocalSearches(query) {
     `${query}, La Adela, La Pampa, Argentina`
   ];
 
-  if (!parseStreetNumber(query)) {
+  if (!parseStreetNumber(query) && !searchLocalPopularPlaces(query).length) {
     searches.unshift(query);
   }
 
@@ -1380,7 +1385,7 @@ function popularPlaceCategory(normalizedQuery) {
 
 async function searchOverpassPlaces(query) {
   const normalizedQuery = normalizeText(query.trim());
-  if (normalizedQuery.length < 3 || parseStreetNumber(query)) return [];
+  if (normalizedQuery.length < 3 || parseStreetNumber(query) || searchLocalPopularPlaces(query).length) return [];
 
   const overpassQuery = `
     [out:json][timeout:8];
