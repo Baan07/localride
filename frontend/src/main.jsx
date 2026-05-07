@@ -16,6 +16,48 @@ const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 const BRAND_NAME = "Rio Movil";
 const BRAND_LOGO = "/rio-movil-logo.png";
+const LOCAL_POPULAR_PLACES = [
+  {
+    id: "la-anonima-rio-colorado",
+    name: "La Anonima",
+    label: "La Anonima - 9 de Julio 746 Rio Colorado",
+    aliases: ["la anonima", "anonima", "la anoni", "supermercado la anonima"],
+    lat: -38.98832,
+    lng: -64.09719
+  },
+  {
+    id: "cooperativa-obrera-rio-colorado",
+    name: "Cooperativa Obrera",
+    label: "Cooperativa Obrera - Av. San Martin 879 Rio Colorado",
+    aliases: ["cooperativa obrera", "coope", "cooperativa", "supermercado cooperativa"],
+    lat: -38.99605,
+    lng: -64.09215
+  },
+  {
+    id: "plaza-san-martin-rio-colorado",
+    name: "Plaza San Martin",
+    label: "Plaza San Martin Rio Colorado",
+    aliases: ["plaza san martin", "plaza principal", "plaza"],
+    lat: defaultCenter[0],
+    lng: defaultCenter[1]
+  },
+  {
+    id: "terminal-rio-colorado",
+    name: "Terminal",
+    label: "Terminal de Omnibus Rio Colorado",
+    aliases: ["terminal", "terminal omnibus", "terminal de omnibus"],
+    lat: -38.9982,
+    lng: -64.0858
+  },
+  {
+    id: "hospital-rio-colorado",
+    name: "Hospital",
+    label: "Hospital Rio Colorado",
+    aliases: ["hospital", "guardia", "salud"],
+    lat: -38.9873,
+    lng: -64.0893
+  }
+];
 const pickupIcon = createMapIcon("A", "pickup");
 const dropoffIcon = createMapIcon("B", "dropoff");
 const driverIcon = createMapIcon("C", "driver");
@@ -1222,6 +1264,7 @@ function adminMetricLabel(value) {
 
 async function searchRioColorado(query) {
   const parsedAddress = parseStreetNumber(query);
+  const localPlaces = searchLocalPopularPlaces(query);
   const searches = buildLocalSearches(query);
 
   const structuredSearches = parsedAddress ? [
@@ -1231,11 +1274,36 @@ async function searchRioColorado(query) {
 
   const results = await Promise.all([...structuredSearches, ...searches].map(searchAddress));
   const byPlaceId = new Map();
+  for (const place of localPlaces) {
+    byPlaceId.set(place.place_id, place);
+  }
   for (const place of results.flat()) {
     const enhancedPlace = withTypedAddressLabel(place, query);
     byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
   }
   return [...byPlaceId.values()].slice(0, 8);
+}
+
+function searchLocalPopularPlaces(query) {
+  const normalizedQuery = normalizeText(query.trim());
+  if (normalizedQuery.length < 3) return [];
+
+  return LOCAL_POPULAR_PLACES
+    .filter((place) => place.aliases.some((alias) => {
+      const normalizedAlias = normalizeText(alias);
+      return normalizedAlias.includes(normalizedQuery) || normalizedQuery.includes(normalizedAlias);
+    }))
+    .map((place) => ({
+      place_id: `local-${place.id}`,
+      lat: String(place.lat),
+      lon: String(place.lng),
+      localride_label: place.label,
+      name: place.name,
+      address: {
+        amenity: place.name,
+        town: "Rio Colorado"
+      }
+    }));
 }
 
 function buildLocalSearches(query) {
