@@ -113,6 +113,15 @@ function AuthScreen({ onSession }) {
               <button type="button" className={role === "driver" ? "selected" : ""} onClick={() => setRole("driver")}>Conductor</button>
             </div>
           )}
+          {mode === "register" && role === "driver" && (
+            <div className="driver-register-fields">
+              <p className="eyebrow">Datos del vehiculo</p>
+              <input name="vehicleMake" placeholder="Marca, ej. Fiat" required />
+              <input name="vehicleModel" placeholder="Modelo, ej. Cronos" required />
+              <input name="vehicleColor" placeholder="Color, ej. Gris" required />
+              <input name="plate" placeholder="Patente, ej. AB314CD" required />
+            </div>
+          )}
           {error && <p className="error">{error}</p>}
           <button className="primary">Continuar</button>
         </form>
@@ -350,7 +359,7 @@ function RealMap({ pickup, dropoff, route, drivers, onPickup, onDropoff }) {
       {route?.coordinates?.length > 0 && <Polyline pathOptions={{ color: "#0e7c66", weight: 5, opacity: 0.88 }} positions={route.coordinates} />}
       {drivers.map((driver) => (
         <Marker icon={driverIcon} key={driver.id} position={[Number(driver.lat), Number(driver.lng)]}>
-          <Popup>{driver.name} - {driver.vehicle_model}</Popup>
+          <Popup>{driver.name} - {vehicleLabel(driver)}</Popup>
         </Marker>
       ))}
     </MapContainer>
@@ -524,6 +533,13 @@ function TrackView({ session }) {
           <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
           <dt>Distancia</dt><dd>{Math.round(trip.distance_meters / 100) / 10} km</dd>
           <dt>Pago</dt><dd>{paymentMethodLabel(trip.payment_method)}</dd>
+          {trip.driver_name && (
+            <>
+              <dt>Conductor</dt><dd>{trip.driver_name}</dd>
+              <dt>Vehiculo</dt><dd>{vehicleLabel(trip)}</dd>
+              <dt>Patente</dt><dd>{trip.plate}</dd>
+            </>
+          )}
           <dt>Ubicacion conductor</dt><dd>{location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Esperando"}</dd>
         </dl>
       </div>
@@ -1087,6 +1103,10 @@ function paymentMethodLabel(value) {
     mercado_pago: "Mercado Pago",
     cash: "Efectivo"
   }[value] || value;
+}
+
+function vehicleLabel(driver) {
+  return [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(" ") || "Vehiculo asignado";
 }
 
 function formatDateTime(value) {

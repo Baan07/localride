@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
-import { query } from "../db.js";
+import { query, transaction } from "../db.js";
 import { HttpError, asyncHandler } from "../errors.js";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import { audit } from "../services/audit.js";
@@ -13,21 +13,54 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   phone: z.string().optional(),
-  role: z.enum(["passenger", "driver"]).default("passenger")
+  role: z.enum(["passenger", "driver"]).default("passenger"),
+  vehicleMake: z.string().optional(),
+  vehicleModel: z.string().optional(),
+  vehicleColor: z.string().optional(),
+  plate: z.string().optional()
+}).superRefine((input, ctx) => {
+  if (input.role !== "driver") return;
+  [
+    ["vehicleMake", "Marca del vehiculo"],
+    ["vehicleModel", "Modelo del vehiculo"],
+    ["vehicleColor", "Color del vehiculo"],
+    ["plate", "Patente"]
+  ].forEach(([field, label]) => {
+    if (!input[field]?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${label} es obligatorio para conductores` });
+    }
+  });
 });
 
 authRouter.post("/register", asyncHandler(async (req, res) => {
   const input = registerSchema.parse(req.body);
   const passwordHash = await bcrypt.hash(input.password, 12);
 
-  const result = await query(
-    `INSERT INTO users(name, email, password_hash, phone, role)
-     VALUES ($1, lower($2), $3, $4, $5)
-     RETURNING id, name, email, phone, role`,
-    [input.name, input.email, passwordHash, input.phone || null, input.role]
-  );
+  const user = await transaction(async (client) => {
+    const result = await client.query(
+      `INSERT INTO users(name, email, password_hash, phone, role)
+       VALUES ($1, lower($2), $3, $4, $5)
+       RETURNING id, name, email, phone, role`,
+      [input.name, input.email, passwordHash, input.phone || null, input.role]
+    );
 
-  const user = result.rows[0];
+    const created = result.rows[0];
+    if (input.role === "driver") {
+      await client.query(
+        `INSERT INTO driver_profiles(user_id, vehicle_make, vehicle_model, vehicle_color, plate)
+         VALUES ($1, $2, $3, $4, upper($5))`,
+        [
+          created.id,
+          input.vehicleMake.trim(),
+          input.vehicleModel.trim(),
+          input.vehicleColor.trim(),
+          input.plate.trim()
+        ]
+      );
+    }
+
+    return created;
+  });
   await audit({ actorId: user.id, action: "auth.register", entityType: "user", entityId: user.id, ip: req.ip });
   res.status(201).json({ user, token: signToken(user) });
 }));

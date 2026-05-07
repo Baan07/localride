@@ -222,6 +222,18 @@ select {
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .segmented button { border: 1px solid #d9e1ec; border-radius: 8px; padding: 10px; background: #fff; }
 .segmented .selected { border-color: #0e7c66; color: #0e7c66; background: #e9f5f1; }
+.driver-register-fields {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+
+.driver-register-fields .eyebrow {
+  margin-bottom: 0;
+}
 
 .fare-card, .metric {
   border: 1px solid #d9e1ec;

@@ -20,6 +20,26 @@ const routeSchema = z.object({
   durationSeconds: z.number().min(1)
 }).optional();
 
+async function fetchTripDetails(id) {
+  const result = await query(
+    `SELECT
+       t.*,
+       driver.name AS driver_name,
+       driver.phone AS driver_phone,
+       d.vehicle_make,
+       d.vehicle_model,
+       d.vehicle_color,
+       d.plate,
+       d.rating AS driver_rating
+     FROM trips t
+     LEFT JOIN users driver ON driver.id = t.driver_id
+     LEFT JOIN driver_profiles d ON d.user_id = t.driver_id
+     WHERE t.id = $1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
 tripsRouter.post("/estimate", requireAuth, asyncHandler(async (req, res) => {
   const input = z.object({ pickup: pointSchema, dropoff: pointSchema, route: routeSchema }).parse(req.body);
   res.json({ estimate: await estimateFare(input) });
@@ -97,23 +117,35 @@ tripsRouter.post("/:id/accept", requireAuth, requireRole("driver"), asyncHandler
      WHERE id = $1
        AND status = 'requested'
        AND driver_id IS NULL
-     RETURNING *`,
+     RETURNING id`,
     [req.params.id, req.user.sub]
   );
 
   if (!result.rows[0]) throw new HttpError(409, "Este pedido ya fue tomado o no esta disponible");
 
+  const trip = await fetchTripDetails(req.params.id);
   await audit({ actorId: req.user.sub, action: "trip.accept", entityType: "trip", entityId: req.params.id, ip: req.ip });
-  broadcastTrip(req.params.id, { type: "trip.updated", trip: result.rows[0] });
-  res.json({ trip: result.rows[0] });
+  broadcastTrip(req.params.id, { type: "trip.updated", trip });
+  res.json({ trip });
 }));
 
 tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
   const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
   const result = await query(
-    `SELECT * FROM trips
-     WHERE ${column} = $1 AND status IN ('requested', 'accepted', 'driver_arriving', 'in_progress')
-     ORDER BY created_at DESC
+    `SELECT
+       t.*,
+       driver.name AS driver_name,
+       driver.phone AS driver_phone,
+       d.vehicle_make,
+       d.vehicle_model,
+       d.vehicle_color,
+       d.plate,
+       d.rating AS driver_rating
+     FROM trips t
+     LEFT JOIN users driver ON driver.id = t.driver_id
+     LEFT JOIN driver_profiles d ON d.user_id = t.driver_id
+     WHERE t.${column} = $1 AND t.status IN ('requested', 'accepted', 'driver_arriving', 'in_progress')
+     ORDER BY t.created_at DESC
      LIMIT 1`,
     [req.user.sub]
   );
@@ -169,8 +201,7 @@ tripsRouter.post("/:id/rating", requireAuth, requireRole("passenger", "admin"), 
 }));
 
 tripsRouter.get("/:id", requireAuth, asyncHandler(async (req, res) => {
-  const result = await query("SELECT * FROM trips WHERE id = $1", [req.params.id]);
-  const trip = result.rows[0];
+  const trip = await fetchTripDetails(req.params.id);
   if (!trip) throw new HttpError(404, "Viaje no encontrado");
 
   const isPassenger = trip.passenger_id === req.user.sub;
@@ -204,13 +235,14 @@ tripsRouter.patch("/:id/status", requireAuth, asyncHandler(async (req, res) => {
          completed_at = CASE WHEN $2 IN ('completed', 'cancelled') THEN now() ELSE completed_at END,
          updated_at = now()
      WHERE id = $1
-     RETURNING *`,
+     RETURNING id`,
     [req.params.id, input.status, input.cancellationReason || null]
   );
 
+  const updatedTrip = await fetchTripDetails(req.params.id);
   await audit({ actorId: req.user.sub, action: `trip.${input.status}`, entityType: "trip", entityId: req.params.id, metadata: input, ip: req.ip });
-  broadcastTrip(req.params.id, { type: "trip.updated", trip: result.rows[0] });
-  res.json({ trip: result.rows[0] });
+  broadcastTrip(req.params.id, { type: "trip.updated", trip: updatedTrip });
+  res.json({ trip: updatedTrip });
 }));
 
 tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
