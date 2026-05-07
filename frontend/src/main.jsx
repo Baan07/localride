@@ -83,8 +83,8 @@ const LOCAL_POPULAR_PLACES = [
   }
 ];
 const LOCAL_STREETS = [
-  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9952, lng: -64.1038 }, end: { lat: -38.9927, lng: -64.0846 } },
-  { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -39.0002, lng: -64.1042 }, end: { lat: -38.9967, lng: -64.0808 } },
+  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9984, lng: -64.1038 }, end: { lat: -38.9957, lng: -64.0846 } },
+  { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -39.0008, lng: -64.1042 }, end: { lat: -38.9989, lng: -64.0808 } },
   { id: "san-martin-rio-colorado", name: "Avenida San Martin", city: "Rio Colorado", aliases: ["san martin", "avenida san martin", "av san martin"], startNumber: 1, endNumber: 1300, start: { lat: -38.9988, lng: -64.1053 }, end: { lat: -38.9937, lng: -64.0789 } },
   { id: "9-julio-rio-colorado", name: "9 de Julio", city: "Rio Colorado", aliases: ["9 de julio", "nueve de julio"], startNumber: 1, endNumber: 900, start: { lat: -38.9882, lng: -64.1056 }, end: { lat: -38.9851, lng: -64.0877 } },
   { id: "mariano-moreno-rio-colorado", name: "Mariano Moreno", city: "Rio Colorado", aliases: ["mariano moreno", "moreno"], startNumber: 1, endNumber: 1100, start: { lat: -38.9927, lng: -64.1065 }, end: { lat: -38.989, lng: -64.0835 } },
@@ -392,8 +392,14 @@ function AddressSearch({ label, value, onText, onSelect }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
+  const selectedValueRef = useRef("");
 
   useEffect(() => {
+    if (selectedValueRef.current && value === selectedValueRef.current) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
     if (value.trim().length < 3) {
       setResults([]);
       return;
@@ -424,23 +430,32 @@ function AddressSearch({ label, value, onText, onSelect }) {
       <div className="address-input-wrap">
         <input
           value={value}
-          onChange={(event) => onText(event.target.value)}
+          onChange={(event) => {
+            selectedValueRef.current = "";
+            onText(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Delete" && value) {
               event.preventDefault();
+              selectedValueRef.current = "";
               setResults([]);
               onText("");
             }
           }}
           placeholder={`Buscar ${label.toLowerCase()} en Rio Colorado o La Adela`}
         />
-        {value && <button type="button" className="clear-input" aria-label={`Borrar ${label.toLowerCase()}`} onClick={() => { setResults([]); onText(""); }}>x</button>}
+        {value && <button type="button" className="clear-input" aria-label={`Borrar ${label.toLowerCase()}`} onClick={() => { selectedValueRef.current = ""; setResults([]); onText(""); }}>x</button>}
       </div>
       {(results.length > 0 || loading) && (
         <div className="suggestions">
           {loading && <span>Buscando calles...</span>}
           {results.map((place) => (
-            <button key={place.place_id} type="button" onClick={() => { onSelect(place); setResults([]); }}>
+            <button key={place.place_id} type="button" onClick={() => {
+              selectedValueRef.current = displayAddress(place);
+              onSelect(place);
+              setResults([]);
+              setLoading(false);
+            }}>
               {displayAddress(place)}
             </button>
           ))}
@@ -1599,6 +1614,9 @@ function adminMetricLabel(value) {
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
   const parsedAddress = parseStreetNumber(query);
+  if (parsedAddress && localPlaces.some((place) => String(place.place_id).startsWith("local-street-"))) {
+    return localPlaces;
+  }
   const searches = buildLocalSearches(query);
 
   const structuredSearches = parsedAddress ? [
