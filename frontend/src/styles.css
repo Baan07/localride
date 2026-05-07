@@ -547,6 +547,11 @@ select {
   padding-top: 2px;
 }
 
+.sync-note {
+  color: #07594b;
+  font-weight: 900;
+}
+
 @keyframes requestPulse {
   0%, 100% { box-shadow: 0 14px 32px rgba(31, 44, 71, .12); }
   50% { box-shadow: 0 0 0 4px rgba(14, 124, 102, .18), 0 20px 40px rgba(14, 124, 102, .2); }

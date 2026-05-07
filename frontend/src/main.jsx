@@ -918,6 +918,7 @@ function DriverView({ session }) {
   const [trip, setTrip] = useState(null);
   const [requests, setRequests] = useState([]);
   const [message, setMessage] = useState("");
+  const [lastLocationSync, setLastLocationSync] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
   const seenRequestIds = useRef(new Set());
@@ -939,6 +940,13 @@ function DriverView({ session }) {
       return () => clearInterval(timer);
     }
   }, [disabled, online]);
+
+  useEffect(() => {
+    if (disabled || (!online && !trip)) return;
+    sendCurrentDriverLocation({ silent: true });
+    const timer = setInterval(() => sendCurrentDriverLocation({ silent: true }), 15000);
+    return () => clearInterval(timer);
+  }, [disabled, online, trip?.id]);
 
   async function loadDriverProfile() {
     try {
@@ -1033,21 +1041,26 @@ function DriverView({ session }) {
     }
   }
 
-  async function sendLocation() {
-    if (!trip) {
-      setMessage("No hay viaje activo asignado.");
-      return;
-    }
-    const position = await getBrowserPosition();
+  async function sendCurrentDriverLocation({ silent = false } = {}) {
     try {
-      await api(`/api/trips/${trip.id}/location`, {
-        method: "POST",
-        token: session.token,
-        body: JSON.stringify({ lat: position.lat, lng: position.lng, speedKmh: 0 })
-      });
-      setMessage("Ubicacion enviada al pasajero.");
+      const position = await getBrowserPosition();
+      if (trip) {
+        await api(`/api/trips/${trip.id}/location`, {
+          method: "POST",
+          token: session.token,
+          body: JSON.stringify({ lat: position.lat, lng: position.lng, speedKmh: 0 })
+        });
+      } else if (online) {
+        await api("/api/drivers/me/availability", {
+          method: "PATCH",
+          token: session.token,
+          body: JSON.stringify({ online: true, lat: position.lat, lng: position.lng })
+        });
+      }
+      setLastLocationSync(new Date());
+      if (!silent) setMessage(trip ? "Ubicacion enviada al pasajero." : "Ubicacion actualizada para recibir pedidos cercanos.");
     } catch (err) {
-      setMessage(err.message);
+      if (!silent) setMessage(err.message);
     }
   }
 
@@ -1063,6 +1076,9 @@ function DriverView({ session }) {
         body: JSON.stringify({ status })
       });
       setTrip(data.trip);
+      if (status === "driver_arriving" || status === "in_progress") {
+        await sendCurrentDriverLocation({ silent: true });
+      }
       if (status === "completed") {
         setTrip(null);
       }
@@ -1084,8 +1100,11 @@ function DriverView({ session }) {
           <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
           <button className="secondary" disabled={!online} onClick={() => loadRequests(true)}>Ver pedidos</button>
           <button className="secondary" disabled={!online} onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
-          <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
-          <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
+          <button className="secondary" disabled={!online && !trip} onClick={() => sendCurrentDriverLocation()}>Enviar ubicacion ahora</button>
+          <p>
+            La ubicacion se actualiza automaticamente cada 15 segundos mientras estes online o con viaje activo.
+            {lastLocationSync && <span className="sync-note"> Ultima actualizacion: {formatTime(lastLocationSync)}.</span>}
+          </p>
           {trip ? (
             <section className="active-driver-trip">
               <div className="request-card-head">
@@ -1105,10 +1124,14 @@ function DriverView({ session }) {
                 <button className="secondary" onClick={() => openNavigationTo(tripPoint(trip, "pickup"))}>Ir al origen</button>
                 <button className="secondary" onClick={() => openNavigationTo(tripPoint(trip, "dropoff"))}>Ir al destino</button>
               </div>
-              <div className="actions">
-                <button className="secondary" onClick={() => updateDriverTripStatus("driver_arriving")}>En camino</button>
-                <button className="secondary" onClick={() => updateDriverTripStatus("in_progress")}>Iniciar</button>
-                <button className="primary" onClick={() => updateDriverTripStatus("completed")}>Finalizar</button>
+              <div className="actions guided-actions">
+                {driverNextAction(trip).message ? (
+                  <span className="cash-badge">{driverNextAction(trip).message}</span>
+                ) : (
+                  <button className="primary" onClick={() => updateDriverTripStatus(driverNextAction(trip).status)}>
+                    {driverNextAction(trip).label}
+                  </button>
+                )}
               </div>
             </section>
           ) : (
@@ -1458,6 +1481,16 @@ function trackingMapLabel(trip, location) {
   return trip.status === "in_progress" ? `A ${formatKm(distance)} del destino` : `A ${formatKm(distance)} del origen`;
 }
 
+function driverNextAction(trip) {
+  return {
+    accepted: { status: "driver_arriving", label: "Voy al origen" },
+    driver_arriving: { status: "in_progress", label: "Llegue / Iniciar viaje" },
+    in_progress: { status: "completed", label: "Finalizar viaje" },
+    completed: { message: "Viaje finalizado" },
+    cancelled: { message: "Viaje cancelado" }
+  }[trip?.status] || { status: "driver_arriving", label: "Voy al origen" };
+}
+
 function formatDateTime(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("es-AR", {
@@ -1465,6 +1498,15 @@ function formatDateTime(value) {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
   }).format(new Date(value));
 }
 
