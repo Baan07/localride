@@ -117,15 +117,15 @@ function api(path, { token, ...options } = {}) {
 }
 
 function App() {
-  const [session, setSession] = useState(() => JSON.parse(localStorage.getItem("localride-session") || "null"));
+  const [session, setSessionState] = useState(loadStoredSession);
   const initialPaymentRoute = getPaymentRoute();
   const [activeTab, setActiveTab] = useState(initialPaymentRoute ? "payments" : "ride");
   const isDriver = session?.user.role === "driver";
 
-  useEffect(() => {
-    if (session) localStorage.setItem("localride-session", JSON.stringify(session));
-    else localStorage.removeItem("localride-session");
-  }, [session]);
+  function setSession(nextSession, remember = true) {
+    persistSession(nextSession, remember);
+    setSessionState(nextSession);
+  }
 
   useEffect(() => {
     if (isDriver && (activeTab === "ride" || activeTab === "track")) setActiveTab("driver");
@@ -166,20 +166,33 @@ function AuthScreen({ onSession }) {
   const [mode, setMode] = useState("login");
   const [role, setRole] = useState("passenger");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [slowLogin, setSlowLogin] = useState(false);
+  const [remember, setRemember] = useState(() => localStorage.getItem("localride-remember") !== "false");
   const [credentials, setCredentials] = useState({ email: "", password: "" });
+
+  useEffect(() => {
+    fetch(`${API_URL}/health`).catch(() => {});
+  }, []);
 
   async function submit(event) {
     event.preventDefault();
     setError("");
+    setLoading(true);
+    setSlowLogin(false);
+    const slowTimer = setTimeout(() => setSlowLogin(true), 4500);
     const form = new FormData(event.currentTarget);
     const body = Object.fromEntries(form.entries());
     if (mode === "register") body.role = role;
 
     try {
       const data = await api(`/api/auth/${mode}`, { method: "POST", body: JSON.stringify(body) });
-      onSession(data);
+      onSession(data, remember);
     } catch (err) {
       setError(err.message);
+    } finally {
+      clearTimeout(slowTimer);
+      setLoading(false);
     }
   }
 
@@ -208,8 +221,15 @@ function AuthScreen({ onSession }) {
               <input name="plate" placeholder="Patente, ej. AB314CD" required />
             </div>
           )}
+          {mode === "login" && (
+            <label className="check-row">
+              <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+              Mantenerme conectado
+            </label>
+          )}
+          {slowLogin && <p className="hint">El servidor puede tardar unos segundos si estaba en reposo. Ya estamos conectando.</p>}
           {error && <p className="error">{error}</p>}
-          <button className="primary">Continuar</button>
+          <button className="primary" disabled={loading}>{loading ? "Conectando..." : "Continuar"}</button>
         </form>
         <button className="link-button" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? "Crear una cuenta nueva" : "Ya tengo cuenta"}
@@ -230,6 +250,7 @@ function RideView({ session, goTrack }) {
   const [carType, setCarType] = useState("standard");
   const [message, setMessage] = useState("");
   const [estimateError, setEstimateError] = useState("");
+  const [locatingPickup, setLocatingPickup] = useState(false);
 
   useEffect(() => {
     refreshNearby();
@@ -295,6 +316,23 @@ function RideView({ session, goTrack }) {
     refreshEstimateFor(pickup, nextDropoff);
   }
 
+  async function useCurrentLocationAsPickup() {
+    setLocatingPickup(true);
+    setMessage("");
+    try {
+      const position = await getBrowserPosition();
+      const nextPickup = { address: "Mi ubicacion actual", lat: position.lat, lng: position.lng };
+      setPickup(nextPickup);
+      await refreshNearbyAt(nextPickup);
+      await refreshEstimateFor(nextPickup, dropoff);
+      setMessage("Origen actualizado con tu ubicacion actual.");
+    } catch (err) {
+      setMessage(err.message || "No se pudo obtener tu ubicacion.");
+    } finally {
+      setLocatingPickup(false);
+    }
+  }
+
   async function createTrip(event) {
     event.preventDefault();
     setMessage("Creando viaje...");
@@ -353,7 +391,17 @@ function RideView({ session, goTrack }) {
         <p className="eyebrow">Nuevo viaje</p>
         <h2>Pedir coche</h2>
         <form className="form-grid one" onSubmit={createTrip}>
-          <AddressSearch label="Origen" value={pickup.address} onText={(address) => setPickup({ ...pickup, address })} onSelect={selectPickup} />
+          <AddressSearch
+            label="Origen"
+            value={pickup.address}
+            onText={(address) => setPickup({ ...pickup, address })}
+            onSelect={selectPickup}
+            action={(
+              <button type="button" className="location-button" disabled={locatingPickup} onClick={useCurrentLocationAsPickup}>
+                <LocateFixed size={16} /> {locatingPickup ? "Ubicando..." : "Usar mi ubicacion"}
+              </button>
+            )}
+          />
           <AddressSearch label="Destino" value={dropoff.address} onText={(address) => setDropoff({ ...dropoff, address })} onSelect={selectDropoff} />
           <label>
             Tipo de coche
@@ -388,7 +436,7 @@ function RideView({ session, goTrack }) {
   );
 }
 
-function AddressSearch({ label, value, onText, onSelect }) {
+function AddressSearch({ label, value, onText, onSelect, action }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -426,7 +474,10 @@ function AddressSearch({ label, value, onText, onSelect }) {
 
   return (
     <label className="address-field">
-      {label}
+      <span className="field-head">
+        <span>{label}</span>
+        {action}
+      </span>
       <div className="address-input-wrap">
         <input
           value={value}
@@ -1610,6 +1661,27 @@ function adminMetricLabel(value) {
     onlineDrivers: "Conductores online",
     pendingDriverVerifications: "Conductores pendientes"
   }[value] || value;
+}
+
+function loadStoredSession() {
+  return readJsonStorage(localStorage, "localride-session") || readJsonStorage(sessionStorage, "localride-session") || null;
+}
+
+function persistSession(session, remember = true) {
+  localStorage.removeItem("localride-session");
+  sessionStorage.removeItem("localride-session");
+  if (!session) return;
+  const targetStorage = remember ? localStorage : sessionStorage;
+  targetStorage.setItem("localride-session", JSON.stringify(session));
+  localStorage.setItem("localride-remember", remember ? "true" : "false");
+}
+
+function readJsonStorage(storage, key) {
+  try {
+    return JSON.parse(storage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
 }
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
