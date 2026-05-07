@@ -408,7 +408,7 @@ function AddressSearch({ label, value, onText, onSelect }) {
     const timer = setTimeout(async () => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const localResults = parseStreetNumber(value) ? searchLocalPopularPlaces(value) : searchLocalSuggestions(value);
+      const localResults = shouldPreferGeocodedResults(value) ? [] : searchLocalSuggestions(value);
       setResults(localResults);
       setLoading(localResults.length === 0);
       try {
@@ -1614,8 +1614,9 @@ function adminMetricLabel(value) {
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
   const parsedAddress = parseStreetNumber(query);
+  const prefersGeocoded = shouldPreferGeocodedResults(query);
   const searches = buildLocalSearches(query);
-  const localStreetFallback = parsedAddress ? searchLocalStreets(query) : [];
+  const localFallback = prefersGeocoded ? searchLocalSuggestions(query) : [];
 
   const structuredSearches = parsedAddress ? [
     structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
@@ -1634,13 +1635,15 @@ async function searchRioColorado(query, localPlaces = searchLocalSuggestions(que
   let externalPlaces = resultSets.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (parsedAddress) {
     externalPlaces = externalPlaces.filter((place) => placeMatchesParsedStreet(place, parsedAddress));
+  } else if (prefersGeocoded) {
+    externalPlaces = externalPlaces.filter((place) => placeMatchesLocalSuggestion(place, localFallback, query));
   }
   for (const place of externalPlaces) {
     const enhancedPlace = withTypedAddressLabel(place, query);
     byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
   }
-  if (parsedAddress && byPlaceId.size === localPlaces.length) {
-    for (const place of localStreetFallback) {
+  if (prefersGeocoded && byPlaceId.size === localPlaces.length) {
+    for (const place of localFallback) {
       byPlaceId.set(place.place_id, place);
     }
   }
@@ -1671,6 +1674,10 @@ function searchLocalPopularPlaces(query) {
 
 function searchLocalSuggestions(query) {
   return [...searchLocalPopularPlaces(query), ...searchLocalStreets(query)].slice(0, 8);
+}
+
+function shouldPreferGeocodedResults(query) {
+  return Boolean(parseStreetNumber(query) || searchLocalPopularPlaces(query).length);
 }
 
 function searchLocalStreets(query) {
@@ -1848,6 +1855,26 @@ function placeMatchesParsedStreet(place, parsedAddress) {
   const roadText = normalizeText(road);
   const displayText = normalizeText(display);
   return roadText.includes(expected) || expected.includes(roadText) || displayText.includes(expected);
+}
+
+function placeMatchesLocalSuggestion(place, localSuggestions, query) {
+  if (localSuggestions.length === 0) return true;
+  const haystack = normalizeText([
+    place.name,
+    place.localride_label,
+    place.display_name,
+    place.address?.amenity,
+    place.address?.shop,
+    place.address?.office
+  ].filter(Boolean).join(" "));
+  const normalizedQuery = normalizeText(query);
+  return localSuggestions.some((suggestion) => {
+    const name = normalizeText(suggestion.name || "");
+    const label = normalizeText(suggestion.localride_label || "");
+    return (name && haystack.includes(name)) ||
+      (label && haystack.includes(label.split(" - ")[0])) ||
+      haystack.includes(normalizedQuery);
+  });
 }
 
 function structuredAddressParams(parsedAddress, city, state) {
