@@ -24,6 +24,8 @@ async function fetchTripDetails(id) {
   const result = await query(
     `SELECT
        t.*,
+       ST_Y(t.pickup_location::geometry) AS pickup_lat,
+       ST_X(t.pickup_location::geometry) AS pickup_lng,
        driver.name AS driver_name,
        driver.phone AS driver_phone,
        d.vehicle_make,
@@ -183,6 +185,8 @@ tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT
        t.*,
+       ST_Y(t.pickup_location::geometry) AS pickup_lat,
+       ST_X(t.pickup_location::geometry) AS pickup_lng,
        driver.name AS driver_name,
        driver.phone AS driver_phone,
        d.vehicle_make,

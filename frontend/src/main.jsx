@@ -645,7 +645,7 @@ function TrackView({ session }) {
               <dt>Patente</dt><dd>{trip.plate}</dd>
             </>
           )}
-          <dt>Ubicacion conductor</dt><dd>{location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : "Esperando"}</dd>
+          <dt>Conductor</dt><dd>{driverApproachLabel(trip, location)}</dd>
         </dl>
       </div>
       <TripHistory trips={history} />
@@ -937,8 +937,8 @@ function DriverView({ session }) {
         token: session.token
       });
       setTrip(data.trip);
+      setRequests([]);
       setMessage("Pedido aceptado.");
-      await loadRequests();
     } catch (err) {
       setMessage(err.message);
     }
@@ -999,7 +999,7 @@ function DriverView({ session }) {
   return (
     <section className="panel">
       <p className="eyebrow">Conductores</p>
-      <h2>Disponibilidad y verificacion</h2>
+      <h2>{trip ? "Viaje en curso" : "Disponibilidad y pedidos"}</h2>
       {disabled ? <p>Tu usuario no tiene rol conductor.</p> : (
         <div className="driver-toggle">
           <button className={online ? "primary" : "secondary"} onClick={() => updateAvailability(!online)}>
@@ -1010,6 +1010,28 @@ function DriverView({ session }) {
           <button className="secondary" disabled={!online} onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
           <button className="secondary" onClick={sendLocation}>Enviar ubicacion</button>
           <p>La ubicacion se guarda en PostGIS y se usa para asignar viajes cercanos.</p>
+          {trip ? (
+            <section className="active-driver-trip">
+              <div className="request-card-head">
+                <div>
+                  <p className="eyebrow">Pedido aceptado</p>
+                  <strong>{money(trip.fare_amount)}</strong>
+                </div>
+                <span>{tripStatusLabel(trip.status)}</span>
+              </div>
+              <dl className="request-details">
+                <dt>Origen</dt><dd>{trip.pickup_address}</dd>
+                <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
+                <dt>Distancia</dt><dd>{formatKm(trip.distance_meters)}</dd>
+                <dt>Pago</dt><dd>{paymentMethodLabel(trip.payment_method)}</dd>
+              </dl>
+              <div className="actions">
+                <button className="secondary" onClick={() => updateDriverTripStatus("driver_arriving")}>En camino</button>
+                <button className="secondary" onClick={() => updateDriverTripStatus("in_progress")}>Iniciar</button>
+                <button className="primary" onClick={() => updateDriverTripStatus("completed")}>Finalizar</button>
+              </div>
+            </section>
+          ) : (
           <div className="request-box">
             <strong>Pedidos disponibles</strong>
             {!online && <span>Conectate para recibir pedidos.</span>}
@@ -1018,22 +1040,6 @@ function DriverView({ session }) {
               <DriverRequestCard key={request.id} request={request} onAccept={acceptRequest} onReject={rejectRequest} />
             ))}
           </div>
-          {trip ? (
-            <>
-              <dl className="receipt">
-                <dt>Viaje</dt><dd>{tripStatusLabel(trip.status)}</dd>
-                <dt>Origen</dt><dd>{trip.pickup_address}</dd>
-                <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
-                <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
-              </dl>
-              <div className="actions">
-                <button className="secondary" onClick={() => updateDriverTripStatus("driver_arriving")}>En camino</button>
-                <button className="secondary" onClick={() => updateDriverTripStatus("in_progress")}>Iniciar</button>
-                <button className="primary" onClick={() => updateDriverTripStatus("completed")}>Finalizar</button>
-              </div>
-            </>
-          ) : (
-            <p>No hay viaje activo asignado.</p>
           )}
           {message && <p className={message.includes("No ") || message.includes("error") ? "error" : "ok"}>{message}</p>}
         </div>
@@ -1297,6 +1303,29 @@ function money(value) {
 
 function formatKm(meters) {
   return `${Math.round(Number(meters || 0) / 100) / 10} km`;
+}
+
+function driverApproachLabel(trip, location) {
+  if (!location) return "Esperando ubicacion";
+  const distance = distanceMetersBetween(location, {
+    lat: Number(trip.pickup_lat || 0),
+    lng: Number(trip.pickup_lng || 0)
+  });
+
+  if (distance) return `A ${formatKm(distance)} del origen`;
+  return "Ubicacion recibida";
+}
+
+function distanceMetersBetween(a, b) {
+  if (!a?.lat || !a?.lng || !b?.lat || !b?.lng) return null;
+  const earthRadius = 6371000;
+  const toRad = (value) => (Number(value) * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 function createMapIcon(label, type) {
