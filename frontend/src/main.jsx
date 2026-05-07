@@ -83,7 +83,7 @@ const LOCAL_POPULAR_PLACES = [
   }
 ];
 const LOCAL_STREETS = [
-  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.99495, lng: -64.1038 }, end: { lat: -38.9936, lng: -64.0846 }, anchors: [{ number: 299, lat: -38.99455, lng: -64.09735 }] },
+  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9938, lng: -64.1038 }, end: { lat: -38.99265, lng: -64.0846 }, anchors: [{ number: 299, lat: -38.9932, lng: -64.09735 }] },
   { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -38.99785, lng: -64.1042 }, end: { lat: -38.99665, lng: -64.0808 }, anchors: [{ number: 350, lat: -38.99745, lng: -64.09675 }] },
   { id: "san-martin-rio-colorado", name: "Avenida San Martin", city: "Rio Colorado", aliases: ["san martin", "avenida san martin", "av san martin"], startNumber: 1, endNumber: 1300, start: { lat: -38.9988, lng: -64.1053 }, end: { lat: -38.9937, lng: -64.0789 } },
   { id: "9-julio-rio-colorado", name: "9 de Julio", city: "Rio Colorado", aliases: ["9 de julio", "nueve de julio"], startNumber: 1, endNumber: 900, start: { lat: -38.9882, lng: -64.1056 }, end: { lat: -38.9851, lng: -64.0877 } },
@@ -408,7 +408,7 @@ function AddressSearch({ label, value, onText, onSelect }) {
     const timer = setTimeout(async () => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const localResults = searchLocalSuggestions(value);
+      const localResults = parseStreetNumber(value) ? searchLocalPopularPlaces(value) : searchLocalSuggestions(value);
       setResults(localResults);
       setLoading(localResults.length === 0);
       try {
@@ -1614,10 +1614,8 @@ function adminMetricLabel(value) {
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
   const parsedAddress = parseStreetNumber(query);
-  if (parsedAddress && localPlaces.some((place) => String(place.place_id).startsWith("local-street-"))) {
-    return localPlaces;
-  }
   const searches = buildLocalSearches(query);
+  const localStreetFallback = parsedAddress ? searchLocalStreets(query) : [];
 
   const structuredSearches = parsedAddress ? [
     structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
@@ -1633,9 +1631,18 @@ async function searchRioColorado(query, localPlaces = searchLocalSuggestions(que
   for (const place of localPlaces) {
     byPlaceId.set(place.place_id, place);
   }
-  for (const place of resultSets.flatMap((result) => result.status === "fulfilled" ? result.value : [])) {
+  let externalPlaces = resultSets.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  if (parsedAddress) {
+    externalPlaces = externalPlaces.filter((place) => placeMatchesParsedStreet(place, parsedAddress));
+  }
+  for (const place of externalPlaces) {
     const enhancedPlace = withTypedAddressLabel(place, query);
     byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
+  }
+  if (parsedAddress && byPlaceId.size === localPlaces.length) {
+    for (const place of localStreetFallback) {
+      byPlaceId.set(place.place_id, place);
+    }
   }
   return [...byPlaceId.values()].slice(0, 8);
 }
@@ -1831,6 +1838,16 @@ function matchesPlaceQuery(place, normalizedQuery) {
   ].filter(Boolean).join(" "));
   const category = popularPlaceCategory(normalizedQuery);
   return haystack.includes(normalizedQuery) || (category && haystack.includes(normalizeText(category)));
+}
+
+function placeMatchesParsedStreet(place, parsedAddress) {
+  const address = place.address || {};
+  const road = address.road || address.pedestrian || address.footway || address.path || address.name || place.name || "";
+  const display = displayAddress(place);
+  const expected = normalizeText(parsedAddress.street);
+  const roadText = normalizeText(road);
+  const displayText = normalizeText(display);
+  return roadText.includes(expected) || expected.includes(roadText) || displayText.includes(expected);
 }
 
 function structuredAddressParams(parsedAddress, city, state) {
