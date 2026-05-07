@@ -82,6 +82,21 @@ const LOCAL_POPULAR_PLACES = [
     lng: -64.0893
   }
 ];
+const LOCAL_STREETS = [
+  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9952, lng: -64.1038 }, end: { lat: -38.9927, lng: -64.0846 } },
+  { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -39.0002, lng: -64.1042 }, end: { lat: -38.9967, lng: -64.0808 } },
+  { id: "san-martin-rio-colorado", name: "Avenida San Martin", city: "Rio Colorado", aliases: ["san martin", "avenida san martin", "av san martin"], startNumber: 1, endNumber: 1300, start: { lat: -38.9988, lng: -64.1053 }, end: { lat: -38.9937, lng: -64.0789 } },
+  { id: "9-julio-rio-colorado", name: "9 de Julio", city: "Rio Colorado", aliases: ["9 de julio", "nueve de julio"], startNumber: 1, endNumber: 900, start: { lat: -38.9882, lng: -64.1056 }, end: { lat: -38.9851, lng: -64.0877 } },
+  { id: "mariano-moreno-rio-colorado", name: "Mariano Moreno", city: "Rio Colorado", aliases: ["mariano moreno", "moreno"], startNumber: 1, endNumber: 1100, start: { lat: -38.9927, lng: -64.1065 }, end: { lat: -38.989, lng: -64.0835 } },
+  { id: "hipolito-yrigoyen-rio-colorado", name: "Hipolito Yrigoyen", city: "Rio Colorado", aliases: ["hipolito yrigoyen", "yrigoyen", "irigoyen"], startNumber: 1, endNumber: 700, start: { lat: -38.9906, lng: -64.1024 }, end: { lat: -38.9884, lng: -64.0884 } },
+  { id: "berutti-rio-colorado", name: "Avenida Berutti", city: "Rio Colorado", aliases: ["berutti", "avenida berutti", "av berutti"], startNumber: 1, endNumber: 900, start: { lat: -38.9991, lng: -64.1032 }, end: { lat: -38.9868, lng: -64.1004 } },
+  { id: "espania-rio-colorado", name: "Avenida Espana", city: "Rio Colorado", aliases: ["espana", "españa", "avenida espana", "avenida españa"], startNumber: 1, endNumber: 1000, start: { lat: -38.9991, lng: -64.0874 }, end: { lat: -38.984, lng: -64.0916 } },
+  { id: "esteban-echeverria-rio-colorado", name: "Esteban Echeverria", city: "Rio Colorado", aliases: ["esteban echeverria", "echeverria"], startNumber: 1, endNumber: 600, start: { lat: -38.9924, lng: -64.0896 }, end: { lat: -38.9817, lng: -64.0928 } },
+  { id: "ingeniero-andersen-rio-colorado", name: "Ingeniero Andersen", city: "Rio Colorado", aliases: ["ingeniero andersen", "andersen"], startNumber: 1, endNumber: 1200, start: { lat: -38.9895, lng: -64.1066 }, end: { lat: -38.9974, lng: -64.0887 } },
+  { id: "libertad-la-adela", name: "Libertad", city: "La Adela", aliases: ["libertad"], startNumber: 1, endNumber: 900, start: { lat: -38.9789, lng: -64.0898 }, end: { lat: -38.9825, lng: -64.0717 } },
+  { id: "avenida-libertador-la-adela", name: "Avenida del Libertador", city: "La Adela", aliases: ["libertador", "avenida del libertador", "av libertador"], startNumber: 1, endNumber: 1200, start: { lat: -38.9799, lng: -64.0918 }, end: { lat: -38.9704, lng: -64.0685 } },
+  { id: "moreno-la-adela", name: "Moreno", city: "La Adela", aliases: ["moreno"], startNumber: 1, endNumber: 700, start: { lat: -38.9824, lng: -64.0878 }, end: { lat: -38.9855, lng: -64.0712 } }
+];
 const pickupIcon = createMapIcon("A", "pickup");
 const dropoffIcon = createMapIcon("B", "dropoff");
 const driverIcon = createMapIcon("C", "driver");
@@ -387,7 +402,7 @@ function AddressSearch({ label, value, onText, onSelect }) {
     const timer = setTimeout(async () => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const localResults = searchLocalPopularPlaces(value);
+      const localResults = searchLocalSuggestions(value);
       setResults(localResults);
       setLoading(localResults.length === 0);
       try {
@@ -1582,7 +1597,7 @@ function adminMetricLabel(value) {
   }[value] || value;
 }
 
-async function searchRioColorado(query, localPlaces = searchLocalPopularPlaces(query)) {
+async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
   const parsedAddress = parseStreetNumber(query);
   const searches = buildLocalSearches(query);
 
@@ -1629,6 +1644,58 @@ function searchLocalPopularPlaces(query) {
     }));
 }
 
+function searchLocalSuggestions(query) {
+  return [...searchLocalPopularPlaces(query), ...searchLocalStreets(query)].slice(0, 8);
+}
+
+function searchLocalStreets(query) {
+  const normalizedQuery = normalizeText(query.trim());
+  if (normalizedQuery.length < 3) return [];
+
+  const parsedAddress = parseStreetNumber(query);
+  const streetQuery = normalizeText(parsedAddress?.street || query);
+  return LOCAL_STREETS
+    .filter((street) => street.aliases.some((alias) => {
+      const normalizedAlias = normalizeText(alias);
+      return normalizedAlias.includes(streetQuery) || streetQuery.includes(normalizedAlias);
+    }))
+    .map((street) => localStreetToPlace(street, parsedAddress?.number))
+    .slice(0, 5);
+}
+
+function localStreetToPlace(street, typedNumber) {
+  const point = interpolateStreetPoint(street, typedNumber);
+  const label = typedNumber
+    ? `${street.name} ${typedNumber} ${street.city}`
+    : `${street.name} ${street.city}`;
+  return {
+    place_id: `local-street-${street.id}-${typedNumber || "sn"}`,
+    lat: String(point.lat),
+    lon: String(point.lng),
+    localride_label: label,
+    name: street.name,
+    address: {
+      road: street.name,
+      house_number: typedNumber || "",
+      town: street.city
+    }
+  };
+}
+
+function interpolateStreetPoint(street, typedNumber) {
+  if (!typedNumber) return {
+    lat: (street.start.lat + street.end.lat) / 2,
+    lng: (street.start.lng + street.end.lng) / 2
+  };
+  const numeric = Number(String(typedNumber).replace(/[^\d]/g, ""));
+  const bounded = Math.min(Math.max(numeric || street.startNumber, street.startNumber), street.endNumber);
+  const ratio = (bounded - street.startNumber) / Math.max(1, street.endNumber - street.startNumber);
+  return {
+    lat: street.start.lat + (street.end.lat - street.start.lat) * ratio,
+    lng: street.start.lng + (street.end.lng - street.start.lng) * ratio
+  };
+}
+
 function buildLocalSearches(query) {
   const normalized = normalizeText(query);
   const searches = [
@@ -1636,7 +1703,7 @@ function buildLocalSearches(query) {
     `${query}, La Adela, La Pampa, Argentina`
   ];
 
-  if (!parseStreetNumber(query) && !searchLocalPopularPlaces(query).length) {
+  if (!parseStreetNumber(query) && !searchLocalSuggestions(query).length) {
     searches.unshift(query);
   }
 
@@ -1661,7 +1728,7 @@ function popularPlaceCategory(normalizedQuery) {
 
 async function searchOverpassPlaces(query) {
   const normalizedQuery = normalizeText(query.trim());
-  if (normalizedQuery.length < 3 || parseStreetNumber(query) || searchLocalPopularPlaces(query).length) return [];
+  if (normalizedQuery.length < 3 || parseStreetNumber(query) || searchLocalSuggestions(query).length) return [];
 
   const overpassQuery = `
     [out:json][timeout:8];
