@@ -94,6 +94,13 @@ ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating integer CHECK (passe
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS passenger_rating_comment text;
 ALTER TABLE fare_rules ADD COLUMN IF NOT EXISTS minimum_fare numeric(12,2) NOT NULL DEFAULT 1500;
 
+CREATE TABLE IF NOT EXISTS driver_trip_dismissals (
+  driver_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (driver_id, trip_id)
+);
+
 CREATE TABLE IF NOT EXISTS trip_locations (
   id bigserial PRIMARY KEY,
   trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,

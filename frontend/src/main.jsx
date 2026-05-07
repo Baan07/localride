@@ -742,6 +742,19 @@ function DriverRequestsPanel({ session, onAccepted }) {
     }
   }
 
+  async function rejectRequest(tripId) {
+    try {
+      await api(`/api/trips/${tripId}/reject`, {
+        method: "POST",
+        token: session.token
+      });
+      setRequests((current) => current.filter((trip) => trip.id !== tripId));
+      setMessage("Pedido rechazado.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   return (
     <section className="panel history-panel">
       <div className="section-row">
@@ -758,16 +771,37 @@ function DriverRequestsPanel({ session, onAccepted }) {
       <div className="request-box">
         {requests.length === 0 && <span>No hay pedidos pendientes.</span>}
         {requests.map((request) => (
-          <article className="request-item" key={request.id}>
-            <div>
-              <strong>{request.pickup_address} a {request.dropoff_address}</strong>
-              <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)} · {formatDateTime(request.created_at)}</span>
-            </div>
-            <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
-          </article>
+          <DriverRequestCard key={request.id} request={request} onAccept={acceptRequest} onReject={rejectRequest} />
         ))}
       </div>
     </section>
+  );
+}
+
+function DriverRequestCard({ request, onAccept, onReject }) {
+  return (
+    <article className="driver-request-card new-request">
+      <div className="request-card-head">
+        <div>
+          <p className="eyebrow">Nuevo pedido</p>
+          <strong>{money(request.fare_amount)}</strong>
+        </div>
+        <span>{paymentMethodLabel(request.payment_method)}</span>
+      </div>
+      <dl className="request-details">
+        <dt>Origen</dt><dd>{request.pickup_address}</dd>
+        <dt>Destino</dt><dd>{request.dropoff_address}</dd>
+        <dt>Viaje</dt><dd>{formatKm(request.distance_meters)}</dd>
+        <dt>Hasta pasajero</dt><dd>{request.distance_to_pickup_meters ? formatKm(request.distance_to_pickup_meters) : "Sin ubicacion"}</dd>
+      </dl>
+      <div className="request-card-foot">
+        <span>{formatDateTime(request.created_at)}</span>
+        <div className="actions">
+          <button className="secondary" onClick={() => onReject(request.id)}>Rechazar</button>
+          <button className="primary" onClick={() => onAccept(request.id)}>Aceptar</button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -873,6 +907,19 @@ function DriverView({ session }) {
     }
   }
 
+  async function rejectRequest(tripId) {
+    try {
+      await api(`/api/trips/${tripId}/reject`, {
+        method: "POST",
+        token: session.token
+      });
+      setRequests((current) => current.filter((request) => request.id !== tripId));
+      setMessage("Pedido rechazado.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   async function sendLocation() {
     if (!trip) {
       setMessage("No hay viaje activo asignado.");
@@ -930,13 +977,7 @@ function DriverView({ session }) {
             <strong>Pedidos disponibles</strong>
             {requests.length === 0 && <span>No hay pedidos pendientes.</span>}
             {requests.map((request) => (
-              <article className="request-item" key={request.id}>
-                <div>
-                  <strong>{request.pickup_address} a {request.dropoff_address}</strong>
-                  <span>{money(request.fare_amount)} · {Math.round(request.distance_meters / 100) / 10} km · {paymentMethodLabel(request.payment_method)} · {formatDateTime(request.created_at)}</span>
-                </div>
-                <button className="primary" onClick={() => acceptRequest(request.id)}>Aceptar</button>
-              </article>
+              <DriverRequestCard key={request.id} request={request} onAccept={acceptRequest} onReject={rejectRequest} />
             ))}
           </div>
           {trip ? (
@@ -1214,6 +1255,10 @@ async function getBrowserPosition() {
 
 function money(value) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function formatKm(meters) {
+  return `${Math.round(Number(meters || 0) / 100) / 10} km`;
 }
 
 function createMapIcon(label, type) {

@@ -97,14 +97,50 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
 
 tripsRouter.get("/driver/requests", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const result = await query(
-    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, created_at
-     FROM trips
-     WHERE status = 'requested'
-       AND driver_id IS NULL
-     ORDER BY created_at DESC
+    `SELECT
+       t.id,
+       t.status,
+       t.pickup_address,
+       t.dropoff_address,
+       t.distance_meters,
+       t.fare_amount,
+       t.payment_method,
+       t.created_at,
+       ST_Distance(d.last_location, t.pickup_location) AS distance_to_pickup_meters
+     FROM trips t
+     LEFT JOIN driver_profiles d ON d.user_id = $1
+     WHERE t.status = 'requested'
+       AND t.driver_id IS NULL
+       AND NOT EXISTS (
+         SELECT 1
+         FROM driver_trip_dismissals dismissed
+         WHERE dismissed.trip_id = t.id
+           AND dismissed.driver_id = $1
+       )
+     ORDER BY t.created_at DESC
      LIMIT 10`
+    ,
+    [req.user.sub]
   );
   res.json({ trips: result.rows });
+}));
+
+tripsRouter.post("/:id/reject", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const result = await query(
+    "SELECT id FROM trips WHERE id = $1 AND status = 'requested' AND driver_id IS NULL",
+    [req.params.id]
+  );
+  if (!result.rows[0]) throw new HttpError(404, "Pedido no disponible");
+
+  await query(
+    `INSERT INTO driver_trip_dismissals(driver_id, trip_id)
+     VALUES ($1, $2)
+     ON CONFLICT DO NOTHING`,
+    [req.user.sub, req.params.id]
+  );
+
+  await audit({ actorId: req.user.sub, action: "trip.reject", entityType: "trip", entityId: req.params.id, ip: req.ip });
+  res.json({ ok: true });
 }));
 
 tripsRouter.post("/:id/accept", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
