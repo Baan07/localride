@@ -93,7 +93,7 @@ const LOCAL_STREETS = [
   { id: "berutti-rio-colorado", name: "Avenida Berutti", city: "Rio Colorado", aliases: ["berutti", "avenida berutti", "av berutti"], startNumber: 1, endNumber: 900, start: { lat: -38.9991, lng: -64.1032 }, end: { lat: -38.9868, lng: -64.1004 } },
   { id: "espania-rio-colorado", name: "Avenida Espana", city: "Rio Colorado", aliases: ["espana", "españa", "avenida espana", "avenida españa"], startNumber: 1, endNumber: 1000, start: { lat: -38.9991, lng: -64.0874 }, end: { lat: -38.984, lng: -64.0916 } },
   { id: "esteban-echeverria-rio-colorado", name: "Esteban Echeverria", city: "Rio Colorado", aliases: ["esteban echeverria", "echeverria"], startNumber: 1, endNumber: 600, start: { lat: -38.9924, lng: -64.0896 }, end: { lat: -38.9817, lng: -64.0928 } },
-  { id: "ingeniero-andersen-rio-colorado", name: "Ingeniero Andersen", city: "Rio Colorado", aliases: ["ingeniero andersen", "andersen"], startNumber: 1, endNumber: 1200, start: { lat: -38.9895, lng: -64.1066 }, end: { lat: -38.9974, lng: -64.0887 } },
+  { id: "ingeniero-andersen-rio-colorado", name: "Ingeniero Andersen", city: "Rio Colorado", aliases: ["ingeniero andersen", "andersen"], startNumber: 1, endNumber: 1200, start: { lat: -38.9884, lng: -64.1045 }, end: { lat: -38.9992, lng: -64.1031 }, anchors: [{ number: 1055, lat: -38.9979, lng: -64.10325 }] },
   { id: "libertad-la-adela", name: "Libertad", city: "La Adela", aliases: ["libertad"], startNumber: 1, endNumber: 900, start: { lat: -38.9789, lng: -64.0898 }, end: { lat: -38.9825, lng: -64.0717 } },
   { id: "avenida-libertador-la-adela", name: "Avenida del Libertador", city: "La Adela", aliases: ["libertador", "avenida del libertador", "av libertador"], startNumber: 1, endNumber: 1200, start: { lat: -38.9799, lng: -64.0918 }, end: { lat: -38.9704, lng: -64.0685 } },
   { id: "moreno-la-adela", name: "Moreno", city: "La Adela", aliases: ["moreno"], startNumber: 1, endNumber: 700, start: { lat: -38.9824, lng: -64.0878 }, end: { lat: -38.9855, lng: -64.0712 } }
@@ -2480,9 +2480,23 @@ function shortAddress(place) {
 }
 
 function parseStreetNumber(value) {
-  const match = value.trim().match(/^(.+?)\s+(\d+[a-zA-Z]?)$/);
+  const cleaned = normalizeCitySuffix(value.trim());
+  const match = cleaned.match(/^(.+?)\s+(\d+[a-zA-Z]?)$/);
   if (!match) return null;
   return { street: match[1].trim(), number: match[2].trim() };
+}
+
+function normalizeCitySuffix(value) {
+  let cleaned = value.trim();
+  let previous = "";
+  while (cleaned !== previous) {
+    previous = cleaned;
+    cleaned = cleaned
+      .replace(/\s*,?\s*(rio colorado|río colorado|la adela)\s*$/i, "")
+      .replace(/\s*,?\s*(rio negro|río negro|la pampa|argentina)\s*$/i, "")
+      .trim();
+  }
+  return cleaned;
 }
 
 function withTypedAddressLabel(place, query) {
