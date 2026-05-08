@@ -84,7 +84,7 @@ const LOCAL_POPULAR_PLACES = [
   }
 ];
 const LOCAL_STREETS = [
-  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9943, lng: -64.104 }, end: { lat: -38.9927, lng: -64.0848 }, anchors: [{ number: 299, lat: -38.99355, lng: -64.09705 }] },
+  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9962, lng: -64.106 }, end: { lat: -38.99365, lng: -64.085 }, anchors: [{ number: 299, lat: -38.99435, lng: -64.0897 }] },
   { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -38.99785, lng: -64.1042 }, end: { lat: -38.99665, lng: -64.0808 }, anchors: [{ number: 350, lat: -38.99745, lng: -64.09675 }] },
   { id: "san-martin-rio-colorado", name: "Avenida San Martin", city: "Rio Colorado", aliases: ["san martin", "avenida san martin", "av san martin"], startNumber: 1, endNumber: 1300, start: { lat: -38.9988, lng: -64.1053 }, end: { lat: -38.9937, lng: -64.0789 } },
   { id: "9-julio-rio-colorado", name: "9 de Julio", city: "Rio Colorado", aliases: ["9 de julio", "nueve de julio"], startNumber: 1, endNumber: 900, start: { lat: -38.9882, lng: -64.1056 }, end: { lat: -38.9851, lng: -64.0877 } },
@@ -306,6 +306,8 @@ function RideView({ session, goTrack }) {
   }
 
   async function refinePointFromBackend(point) {
+    const localStreetPlace = localStreetAddressPlace(point.address);
+    if (localStreetPlace) return placeToPoint(localStreetPlace);
     if (!shouldPreferGeocodedResults(point.address)) return point;
     const results = await searchRioColorado(point.address, [], []);
     const best = results.find((place) => !String(place.place_id || "").startsWith("local-"));
@@ -2090,6 +2092,9 @@ function readJsonStorage(storage, key) {
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query), frequentPlaces = []) {
   const parsedAddress = parseStreetNumber(query);
+  const localStreetPlace = localStreetAddressPlace(query);
+  if (localStreetPlace) return [localStreetPlace];
+
   const prefersGeocoded = shouldPreferGeocodedResults(query);
   const searches = buildLocalSearches(query);
   const localFallback = prefersGeocoded ? searchLocalSuggestions(query, frequentPlaces) : [];
@@ -2195,6 +2200,17 @@ function searchLocalStreets(query) {
     }))
     .map((street) => localStreetToPlace(street, parsedAddress?.number))
     .slice(0, 5);
+}
+
+function localStreetAddressPlace(query) {
+  const parsedAddress = parseStreetNumber(query);
+  if (!parsedAddress) return null;
+  const streetQuery = normalizeText(parsedAddress.street);
+  const street = LOCAL_STREETS.find((candidate) => candidate.aliases.some((alias) => {
+    const normalizedAlias = normalizeText(alias);
+    return normalizedAlias.includes(streetQuery) || streetQuery.includes(normalizedAlias);
+  }));
+  return street ? localStreetToPlace(street, parsedAddress.number) : null;
 }
 
 function localStreetToPlace(street, typedNumber) {
