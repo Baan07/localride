@@ -362,6 +362,61 @@ select {
 .receipt dd { margin: 0; font-weight: 900; text-align: right; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
 .metric strong { display: block; font-size: 24px; margin-top: 4px; }
+.finance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.finance-card {
+  border: 1px solid #d9e1ec;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+.finance-card span,
+.finance-card small {
+  display: block;
+  color: #667085;
+}
+.finance-card strong {
+  display: block;
+  margin: 6px 0;
+  font-size: 24px;
+}
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.status-chips span {
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #e9f5f1;
+  color: #07594b;
+  font-size: 13px;
+  font-weight: 900;
+}
+.audit-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.audit-item {
+  border-bottom: 1px solid #edf1f6;
+  padding: 0 0 10px;
+}
+.audit-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.audit-item strong,
+.audit-item span {
+  display: block;
+}
+.audit-item span {
+  color: #667085;
+  font-size: 13px;
+  margin-top: 3px;
+}
 .section-row {
   display: flex;
   align-items: center;
@@ -651,7 +706,7 @@ select {
   .topbar h1 {
     font-size: 28px;
   }
-  .grid.two, .metrics { grid-template-columns: 1fr; }
+  .grid.two, .metrics, .finance-grid { grid-template-columns: 1fr; }
   .ride-map-panel {
     order: 2;
   }

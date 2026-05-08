@@ -57,6 +57,55 @@ adminRouter.get("/trips", requireAuth, requireRole("admin"), asyncHandler(async 
   res.json({ trips: result.rows });
 }));
 
+adminRouter.get("/payments-summary", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const [byMethod, paymentStates] = await Promise.all([
+    query(
+      `SELECT
+         payment_method,
+         count(*)::int AS total_trips,
+         coalesce(sum(fare_amount), 0)::numeric AS total_amount,
+         coalesce(sum(platform_fee), 0)::numeric AS platform_fee
+       FROM trips
+       WHERE status = 'completed'
+       GROUP BY payment_method
+       ORDER BY payment_method`
+    ),
+    query(
+      `SELECT status, count(*)::int AS total, coalesce(sum(amount), 0)::numeric AS amount
+       FROM payments
+       GROUP BY status
+       ORDER BY status`
+    )
+  ]);
+
+  res.json({
+    byMethod: byMethod.rows.map((row) => ({
+      paymentMethod: row.payment_method,
+      totalTrips: row.total_trips,
+      totalAmount: Number(row.total_amount),
+      platformFee: Number(row.platform_fee)
+    })),
+    paymentStates: paymentStates.rows.map((row) => ({
+      status: row.status,
+      total: row.total,
+      amount: Number(row.amount)
+    }))
+  });
+}));
+
+adminRouter.get("/audit", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT
+       a.id, a.action, a.entity_type, a.entity_id, a.metadata, a.created_at,
+       u.name AS actor_name, u.email AS actor_email
+     FROM audit_logs a
+     LEFT JOIN users u ON u.id = a.actor_id
+     ORDER BY a.created_at DESC
+     LIMIT 60`
+  );
+  res.json({ logs: result.rows });
+}));
+
 adminRouter.get("/trips/export", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT

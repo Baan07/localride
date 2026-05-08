@@ -1300,6 +1300,8 @@ function AdminView({ session }) {
   const [users, setUsers] = useState([]);
   const [trips, setTrips] = useState([]);
   const [fareRule, setFareRule] = useState(null);
+  const [paymentSummary, setPaymentSummary] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [message, setMessage] = useState("");
   const [userActionMessage, setUserActionMessage] = useState("");
   const [driverDrafts, setDriverDrafts] = useState({});
@@ -1313,16 +1315,20 @@ function AdminView({ session }) {
   async function loadAdminData() {
     setMessage("");
     try {
-      const [dashboardData, usersData, tripsData, fareData] = await Promise.all([
+      const [dashboardData, usersData, tripsData, fareData, paymentData, auditData] = await Promise.all([
         api("/api/admin/dashboard", { token: session.token }),
         api("/api/admin/users", { token: session.token }),
         api("/api/admin/trips", { token: session.token }),
-        api("/api/admin/fare-rules", { token: session.token })
+        api("/api/admin/fare-rules", { token: session.token }),
+        api("/api/admin/payments-summary", { token: session.token }),
+        api("/api/admin/audit", { token: session.token })
       ]);
       setDashboard(dashboardData);
       setUsers(usersData.users || []);
       setTrips(tripsData.trips || []);
       setFareRule(fareData.fareRule);
+      setPaymentSummary(paymentData);
+      setAuditLogs(auditData.logs || []);
       setDriverDrafts((current) => {
         const next = { ...current };
         for (const user of usersData.users || []) {
@@ -1463,6 +1469,42 @@ function AdminView({ session }) {
           ))}
         </div>
         {message && <p className="ok">{message}</p>}
+      </div>
+
+      <div className="grid two">
+        <section className="panel">
+          <p className="eyebrow">Caja</p>
+          <h2>Pagos y comisiones</h2>
+          <div className="finance-grid">
+            {(paymentSummary?.byMethod || []).map((row) => (
+              <article className="finance-card" key={row.paymentMethod}>
+                <span>{paymentMethodLabel(row.paymentMethod)}</span>
+                <strong>{money(row.totalAmount)}</strong>
+                <small>{row.totalTrips} viajes · Comision {money(row.platformFee)}</small>
+              </article>
+            ))}
+            {(!paymentSummary?.byMethod || paymentSummary.byMethod.length === 0) && <p>No hay viajes finalizados para conciliar.</p>}
+          </div>
+          <div className="status-chips">
+            {(paymentSummary?.paymentStates || []).map((state) => (
+              <span key={state.status}>{paymentStatusLabel(state.status)}: {state.total} · {money(state.amount)}</span>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <p className="eyebrow">Auditoria</p>
+          <h2>Actividad reciente</h2>
+          <div className="audit-list">
+            {auditLogs.slice(0, 8).map((log) => (
+              <article className="audit-item" key={log.id}>
+                <strong>{auditActionLabel(log.action)}</strong>
+                <span>{log.actor_name || "Sistema"} · {formatDateTime(log.created_at)}</span>
+              </article>
+            ))}
+            {auditLogs.length === 0 && <p>No hay actividad registrada.</p>}
+          </div>
+        </section>
       </div>
 
       <div className="grid two">
@@ -1624,6 +1666,16 @@ function paymentMethodLabel(value) {
   }[value] || value;
 }
 
+function paymentStatusLabel(value) {
+  return {
+    pending: "Pendiente",
+    approved: "Aprobado",
+    rejected: "Rechazado",
+    refunded: "Devuelto",
+    cash_due: "Efectivo pendiente"
+  }[value] || value;
+}
+
 function isActiveTrip(status) {
   return ["requested", "accepted", "driver_arriving", "in_progress"].includes(status);
 }
@@ -1759,6 +1811,26 @@ function adminMetricLabel(value) {
     revenue: "Facturacion",
     onlineDrivers: "Conductores online",
     pendingDriverVerifications: "Conductores pendientes"
+  }[value] || value;
+}
+
+function auditActionLabel(value) {
+  return {
+    "auth.register": "Registro de usuario",
+    "auth.login": "Inicio de sesion",
+    "admin.fare_rules_update": "Cambio de tarifas",
+    "admin.driver_verification": "Verificacion de conductor",
+    "admin.user_block": "Usuario bloqueado",
+    "admin.user_unblock": "Usuario desbloqueado",
+    "admin.trip_cancel": "Viaje cancelado por admin",
+    "trip.create": "Viaje solicitado",
+    "trip.accept": "Viaje aceptado",
+    "trip.driver_arriving": "Conductor en camino",
+    "trip.in_progress": "Viaje iniciado",
+    "trip.completed": "Viaje finalizado",
+    "trip.cancelled": "Viaje cancelado",
+    "trip.rate": "Calificacion recibida",
+    "payment.checkout_pro": "Checkout Mercado Pago"
   }[value] || value;
 }
 
