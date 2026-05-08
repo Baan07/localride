@@ -305,11 +305,26 @@ function RideView({ session, goTrack }) {
     setDrivers(data.drivers);
   }
 
+  async function refinePointFromBackend(point) {
+    if (!shouldPreferGeocodedResults(point.address)) return point;
+    const results = await searchRioColorado(point.address, [], []);
+    const best = results.find((place) => !String(place.place_id || "").startsWith("local-"));
+    return best ? placeToPoint(best) : point;
+  }
+
   async function refreshEstimate() {
     return refreshEstimateFor(pickup, dropoff);
   }
 
   async function refreshEstimateFor(nextPickup, nextDropoff) {
+    const [precisePickup, preciseDropoff] = await Promise.all([
+      refinePointFromBackend(nextPickup),
+      refinePointFromBackend(nextDropoff)
+    ]);
+    if (precisePickup !== nextPickup) setPickup(precisePickup);
+    if (preciseDropoff !== nextDropoff) setDropoff(preciseDropoff);
+    nextPickup = precisePickup;
+    nextDropoff = preciseDropoff;
     const nextRoute = await fetchRoute(nextPickup, nextDropoff);
     setRoute(nextRoute);
     setEstimateError("");
@@ -523,7 +538,7 @@ function AddressSearch({ label, value, onText, onSelect, action, frequentPlaces 
     const timer = setTimeout(async () => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const localResults = searchLocalSuggestions(value, frequentPlaces);
+      const localResults = shouldPreferGeocodedResults(value) ? [] : searchLocalSuggestions(value, frequentPlaces);
       setResults(localResults);
       setLoading(localResults.length === 0);
       try {
@@ -2078,7 +2093,6 @@ async function searchRioColorado(query, localPlaces = searchLocalSuggestions(que
   const prefersGeocoded = shouldPreferGeocodedResults(query);
   const searches = buildLocalSearches(query);
   const localFallback = prefersGeocoded ? searchLocalSuggestions(query, frequentPlaces) : [];
-  const hasCuratedMatch = localPlaces.some((place) => String(place.place_id || "").startsWith("local-"));
 
   const structuredSearches = parsedAddress ? [
     structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
@@ -2088,25 +2102,25 @@ async function searchRioColorado(query, localPlaces = searchLocalSuggestions(que
   const resultSets = await Promise.allSettled([
     ...structuredSearches.map(searchAddress),
     ...searches.map(searchAddress),
-    hasCuratedMatch ? Promise.resolve([]) : searchOverpassPlaces(query)
+    searchOverpassPlaces(query)
   ]);
   const byPlaceId = new Map();
-  for (const place of localPlaces) {
-    byPlaceId.set(place.place_id, place);
-  }
   let externalPlaces = resultSets.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   if (parsedAddress) {
     externalPlaces = externalPlaces.filter((place) => placeMatchesParsedStreet(place, parsedAddress));
   } else if (prefersGeocoded) {
     externalPlaces = externalPlaces.filter((place) => placeMatchesLocalSuggestion(place, localFallback, query));
   }
-  if (!hasCuratedMatch) {
-    for (const place of externalPlaces) {
-      const enhancedPlace = withTypedAddressLabel(place, query);
-      byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
+  for (const place of externalPlaces) {
+    const enhancedPlace = withTypedAddressLabel(place, query);
+    byPlaceId.set(enhancedPlace.place_id || displayAddress(enhancedPlace), enhancedPlace);
+  }
+  if (!prefersGeocoded || byPlaceId.size === 0) {
+    for (const place of localPlaces) {
+      byPlaceId.set(place.place_id, place);
     }
   }
-  if (prefersGeocoded && byPlaceId.size === localPlaces.length) {
+  if (prefersGeocoded && byPlaceId.size === 0) {
     for (const place of localFallback) {
       byPlaceId.set(place.place_id, place);
     }
@@ -2502,19 +2516,10 @@ function loadSavedRidePoints() {
   try {
     const saved = JSON.parse(localStorage.getItem("localride-last-ride-points") || "null");
     if (!saved?.pickup?.lat || !saved?.pickup?.lng) return null;
-    return {
-      pickup: canonicalizeKnownPoint(saved.pickup),
-      dropoff: canonicalizeKnownPoint(saved.dropoff)
-    };
+    return saved;
   } catch {
     return null;
   }
-}
-
-function canonicalizeKnownPoint(point) {
-  if (!point?.address) return point;
-  const curated = searchLocalSuggestions(point.address).find((place) => String(place.place_id || "").startsWith("local-"));
-  return curated ? placeToPoint(curated) : point;
 }
 
 createRoot(document.getElementById("root")).render(<App />);
