@@ -28,9 +28,14 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash text NOT NULL,
   phone text,
   role user_role NOT NULL DEFAULT 'passenger',
+  blocked_at timestamptz,
+  blocked_reason text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason text;
 
 CREATE TABLE IF NOT EXISTS driver_profiles (
   user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

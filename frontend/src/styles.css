@@ -399,6 +399,20 @@ select {
   color: #a36d00;
   font-weight: 900;
 }
+.blocked-line {
+  color: #c73838 !important;
+  font-weight: 900;
+}
+.admin-trip-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  text-align: right;
+}
+.danger-action {
+  background: #fff1f1;
+  color: #9f1d1d;
+}
 .mini-actions {
   display: flex;
   flex-wrap: wrap;
@@ -665,6 +679,10 @@ select {
   .mini-actions,
   .actions {
     width: 100%;
+  }
+  .admin-trip-actions {
+    justify-items: start;
+    text-align: left;
   }
   .mini-actions button,
   .actions button,

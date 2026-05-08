@@ -70,6 +70,10 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   const result = await query("SELECT * FROM users WHERE email = lower($1)", [input.email]);
   const user = result.rows[0];
 
+  if (user?.blocked_at) {
+    throw new HttpError(403, "Usuario bloqueado. Contacta al administrador.");
+  }
+
   if (!user || !(await bcrypt.compare(input.password, user.password_hash))) {
     throw new HttpError(401, "Email o contrasena incorrectos");
   }
@@ -82,7 +86,7 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
 }));
 
 authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
-  const result = await query("SELECT id, name, email, phone, role FROM users WHERE id = $1", [req.user.sub]);
+  const result = await query("SELECT id, name, email, phone, role, blocked_at FROM users WHERE id = $1", [req.user.sub]);
   if (!result.rows[0]) throw new HttpError(404, "Usuario no encontrado");
   res.json({ user: result.rows[0] });
 }));

@@ -111,7 +111,19 @@ function api(path, { token, ...options } = {}) {
     }
   }).then(async (response) => {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Error de API");
+    if (!response.ok) {
+      const message = data.error || "Error de API";
+      const authMessage = message.toLowerCase();
+      if (
+        response.status === 401 ||
+        authMessage.includes("sesion invalida") ||
+        authMessage.includes("vencida") ||
+        authMessage.includes("usuario bloqueado")
+      ) {
+        window.dispatchEvent(new CustomEvent("localride:auth-expired", { detail: message }));
+      }
+      throw new Error(message);
+    }
     return data;
   });
 }
@@ -126,6 +138,14 @@ function App() {
     persistSession(nextSession, remember);
     setSessionState(nextSession);
   }
+
+  useEffect(() => {
+    function handleExpiredSession() {
+      setSession(null);
+    }
+    window.addEventListener("localride:auth-expired", handleExpiredSession);
+    return () => window.removeEventListener("localride:auth-expired", handleExpiredSession);
+  }, []);
 
   useEffect(() => {
     if (isDriver && (activeTab === "ride" || activeTab === "track")) setActiveTab("driver");
@@ -685,7 +705,7 @@ function TrackView({ session }) {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "trip.updated") {
-        if (data.trip?.status === "completed") {
+        if (data.trip?.status === "completed" || data.trip?.status === "cancelled") {
           setLastCompletedTrip(data.trip);
           setTrip(null);
           localStorage.setItem("localride-last-completed-trip-id", data.trip.id);
@@ -1369,6 +1389,60 @@ function AdminView({ session }) {
     }
   }
 
+  async function setUserBlocked(user, blocked) {
+    setUserActionMessage("");
+    try {
+      await api(`/api/admin/users/${user.id}/block`, {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ blocked, reason: blocked ? "Bloqueado desde panel admin" : undefined })
+      });
+      setMessage(blocked ? "Usuario bloqueado." : "Usuario desbloqueado.");
+      await loadAdminData();
+    } catch (err) {
+      setUserActionMessage(err.message);
+    }
+  }
+
+  async function cancelAdminTrip(trip) {
+    const reason = window.prompt("Motivo de cancelacion", "Cancelado por administracion");
+    if (!reason) return;
+    setMessage("");
+    try {
+      await api(`/api/admin/trips/${trip.id}/cancel`, {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify({ reason })
+      });
+      setMessage("Viaje cancelado.");
+      await loadAdminData();
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function exportTripsCsv() {
+    setMessage("");
+    try {
+      const response = await fetch(`${API_URL}/api/admin/trips/export`, {
+        headers: { Authorization: `Bearer ${session.token}` }
+      });
+      if (!response.ok) throw new Error("No se pudo exportar viajes");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "rio-movil-viajes.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage("Exportacion generada.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   if (session.user.role !== "admin") return <EmptyState title="Solo administradores" text="El panel controla tarifas, verificacion y auditoria." />;
   return (
     <section className="admin-stack">
@@ -1378,7 +1452,10 @@ function AdminView({ session }) {
             <p className="eyebrow">Operacion</p>
             <h2>Panel local</h2>
           </div>
-          <button className="secondary" onClick={loadAdminData}>Actualizar</button>
+          <div className="mini-actions">
+            <button className="secondary" onClick={exportTripsCsv}>Exportar CSV</button>
+            <button className="secondary" onClick={loadAdminData}>Actualizar</button>
+          </div>
         </div>
         <div className="metrics">
           {dashboard && Object.entries(dashboard.metrics).map(([key, value]) => (
@@ -1415,6 +1492,7 @@ function AdminView({ session }) {
               <article className="admin-item" key={user.id}>
                 <div>
                   <strong>{user.name}</strong>
+                  {user.blocked_at && <span className="blocked-line">Bloqueado: {user.blocked_reason || "Sin motivo cargado"}</span>}
                   <span>{user.email} · {roleLabel(user.role)}</span>
                   {user.role === "driver" && <span>{adminVehicleLabel(user)} · {verificationLabel(user.verification_status)}</span>}
                   {user.role === "driver" && !hasVehicleProfile(user) && (
@@ -1426,13 +1504,22 @@ function AdminView({ session }) {
                     </div>
                   )}
                 </div>
-                {user.role === "driver" && (
-                  <div className="mini-actions">
-                    <span className={`verification-badge ${user.verification_status}`}>{verificationLabel(user.verification_status)}</span>
-                    <button className="secondary" disabled={user.verification_status === "approved"} onClick={() => verifyDriver(user.id, "approved")}>Aprobar</button>
-                    <button className="secondary" disabled={user.verification_status === "rejected"} onClick={() => verifyDriver(user.id, "rejected")}>Rechazar</button>
-                  </div>
-                )}
+                <div className="mini-actions">
+                  {user.role === "driver" && (
+                    <>
+                      <span className={`verification-badge ${user.verification_status}`}>{verificationLabel(user.verification_status)}</span>
+                      <button className="secondary" disabled={user.verification_status === "approved"} onClick={() => verifyDriver(user.id, "approved")}>Aprobar</button>
+                      <button className="secondary" disabled={user.verification_status === "rejected"} onClick={() => verifyDriver(user.id, "rejected")}>Rechazar</button>
+                    </>
+                  )}
+                  <button
+                    className={user.blocked_at ? "secondary" : "secondary danger-action"}
+                    disabled={user.id === session.user.id}
+                    onClick={() => setUserBlocked(user, !user.blocked_at)}
+                  >
+                    {user.blocked_at ? "Desbloquear" : "Bloquear"}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
@@ -1440,8 +1527,13 @@ function AdminView({ session }) {
       </div>
 
       <section className="panel">
-        <p className="eyebrow">Viajes</p>
-        <h2>Ultimos pedidos</h2>
+        <div className="section-row">
+          <div>
+            <p className="eyebrow">Viajes</p>
+            <h2>Ultimos pedidos</h2>
+          </div>
+          <button className="secondary" onClick={exportTripsCsv}>Exportar CSV</button>
+        </div>
         <div className="admin-list">
           {trips.map((trip) => (
             <article className="admin-item" key={trip.id}>
@@ -1454,9 +1546,12 @@ function AdminView({ session }) {
                 </span>
                 {trip.passenger_rating_comment && <span>Comentario: {trip.passenger_rating_comment}</span>}
               </div>
-              <div>
+              <div className="admin-trip-actions">
                 <strong>{money(trip.fare_amount)}</strong>
                 <span>{Math.round(trip.distance_meters / 100) / 10} km</span>
+                {isActiveTrip(trip.status) && (
+                  <button className="secondary danger-action" onClick={() => cancelAdminTrip(trip)}>Cancelar</button>
+                )}
               </div>
             </article>
           ))}
@@ -1527,6 +1622,10 @@ function paymentMethodLabel(value) {
     mercado_pago: "Mercado Pago",
     cash: "Efectivo"
   }[value] || value;
+}
+
+function isActiveTrip(status) {
+  return ["requested", "accepted", "driver_arriving", "in_progress"].includes(status);
 }
 
 function vehicleLabel(driver) {
