@@ -23,6 +23,53 @@ driversRouter.get("/me/profile", requireAuth, requireRole("driver"), asyncHandle
   res.json({ profile: result.rows[0] || null });
 }));
 
+driversRouter.get("/me/earnings", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const [summary, recentTrips] = await Promise.all([
+    query(
+      `SELECT
+         count(*)::int AS completed_trips,
+         coalesce(sum(fare_amount), 0)::numeric AS gross_amount,
+         coalesce(sum(platform_fee), 0)::numeric AS platform_fee,
+         coalesce(sum(fare_amount - platform_fee), 0)::numeric AS driver_net,
+         coalesce(sum(CASE WHEN payment_method = 'cash' THEN fare_amount ELSE 0 END), 0)::numeric AS cash_amount,
+         coalesce(sum(CASE WHEN payment_method = 'mercado_pago' THEN fare_amount ELSE 0 END), 0)::numeric AS mercado_pago_amount
+       FROM trips
+       WHERE driver_id = $1 AND status = 'completed'`,
+      [req.user.sub]
+    ),
+    query(
+      `SELECT
+         t.id, t.pickup_address, t.dropoff_address, t.distance_meters, t.fare_amount,
+         t.platform_fee, t.payment_method, t.completed_at,
+         p.status AS payment_status
+       FROM trips t
+       LEFT JOIN LATERAL (
+         SELECT status
+         FROM payments
+         WHERE trip_id = t.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) p ON true
+       WHERE t.driver_id = $1 AND t.status = 'completed'
+       ORDER BY t.completed_at DESC NULLS LAST, t.created_at DESC
+       LIMIT 30`,
+      [req.user.sub]
+    )
+  ]);
+
+  res.json({
+    summary: {
+      completedTrips: summary.rows[0].completed_trips,
+      grossAmount: Number(summary.rows[0].gross_amount),
+      platformFee: Number(summary.rows[0].platform_fee),
+      driverNet: Number(summary.rows[0].driver_net),
+      cashAmount: Number(summary.rows[0].cash_amount),
+      mercadoPagoAmount: Number(summary.rows[0].mercado_pago_amount)
+    },
+    trips: recentTrips.rows
+  });
+}));
+
 driversRouter.put("/me/profile", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
   const input = z.object({
     vehicleMake: z.string().min(2),

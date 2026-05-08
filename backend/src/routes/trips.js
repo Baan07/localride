@@ -154,6 +154,15 @@ tripsRouter.post("/:id/reject", requireAuth, requireRole("driver"), asyncHandler
 }));
 
 tripsRouter.post("/:id/accept", requireAuth, requireRole("driver"), asyncHandler(async (req, res) => {
+  const active = await query(
+    `SELECT id FROM trips
+     WHERE driver_id = $1
+       AND status IN ('accepted', 'driver_arriving', 'in_progress')
+     LIMIT 1`,
+    [req.user.sub]
+  );
+  if (active.rows[0]) throw new HttpError(409, "Ya tenes un viaje activo. Finalizalo antes de aceptar otro.");
+
   const result = await query(
     `UPDATE trips
      SET driver_id = $2,
@@ -215,7 +224,13 @@ tripsRouter.get("/active", requireAuth, asyncHandler(async (req, res) => {
 tripsRouter.get("/", requireAuth, asyncHandler(async (req, res) => {
   const column = req.user.role === "driver" ? "driver_id" : "passenger_id";
   const result = await query(
-    `SELECT id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method, passenger_rating, passenger_rating_comment, created_at, completed_at
+    `SELECT
+       id, status, pickup_address, dropoff_address, distance_meters, fare_amount, payment_method,
+       passenger_rating, passenger_rating_comment, created_at, completed_at,
+       ST_Y(pickup_location::geometry) AS pickup_lat,
+       ST_X(pickup_location::geometry) AS pickup_lng,
+       ST_Y(dropoff_location::geometry) AS dropoff_lat,
+       ST_X(dropoff_location::geometry) AS dropoff_lng
      FROM trips
      WHERE ${column} = $1
      ORDER BY created_at DESC

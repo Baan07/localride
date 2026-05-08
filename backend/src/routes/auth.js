@@ -90,3 +90,25 @@ authRouter.get("/me", requireAuth, asyncHandler(async (req, res) => {
   if (!result.rows[0]) throw new HttpError(404, "Usuario no encontrado");
   res.json({ user: result.rows[0] });
 }));
+
+authRouter.patch("/me", requireAuth, asyncHandler(async (req, res) => {
+  const input = z.object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    phone: z.string().max(40).optional()
+  }).parse(req.body);
+
+  const result = await query(
+    `UPDATE users
+     SET name = $2,
+         email = lower($3),
+         phone = $4,
+         updated_at = now()
+     WHERE id = $1
+     RETURNING id, name, email, phone, role`,
+    [req.user.sub, input.name.trim(), input.email.trim(), input.phone?.trim() || null]
+  );
+
+  await audit({ actorId: req.user.sub, action: "auth.profile_update", entityType: "user", entityId: req.user.sub, ip: req.ip });
+  res.json({ user: result.rows[0], token: signToken(result.rows[0]) });
+}));

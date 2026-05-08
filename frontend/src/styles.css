@@ -357,6 +357,38 @@ select {
   background: #e9f5f1;
   font-weight: 900;
 }
+.vehicle-card {
+  margin-top: 14px;
+  border: 1px solid #0e7c66;
+  border-radius: 8px;
+  padding: 14px;
+  background: #e9f5f1;
+}
+.vehicle-card span,
+.vehicle-card p {
+  display: block;
+  color: #07594b;
+  margin: 0;
+}
+.vehicle-card strong {
+  display: block;
+  margin: 4px 0;
+  font-size: 20px;
+}
+.profile-panel {
+  max-width: 720px;
+}
+.driver-layout {
+  display: grid;
+  gap: 18px;
+}
+.driver-trip-map {
+  margin-top: 16px;
+  min-height: 420px;
+}
+.driver-trip-map .tracking-map {
+  min-height: 420px;
+}
 .receipt { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .receipt dt { color: #667085; }
 .receipt dd { margin: 0; font-weight: 900; text-align: right; }
@@ -532,6 +564,11 @@ select {
   border-radius: 8px;
   padding: 12px;
   background: #fbfcfe;
+}
+.compact-button {
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 0 12px;
 }
 .history-item strong,
 .history-item span {

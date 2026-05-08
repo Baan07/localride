@@ -160,6 +160,7 @@ function App() {
         {!isDriver && <button className={activeTab === "ride" ? "active" : ""} onClick={() => setActiveTab("ride")}><Car size={18} /> Pedir</button>}
         {!isDriver && <button className={activeTab === "track" ? "active" : ""} onClick={() => setActiveTab("track")}><LocateFixed size={18} /> Seguimiento</button>}
         {isDriver && <button className={activeTab === "driver" ? "active" : ""} onClick={() => setActiveTab("driver")}><UserRound size={18} /> Panel conductor</button>}
+        <button className={activeTab === "profile" ? "active" : ""} onClick={() => setActiveTab("profile")}><UserRound size={18} /> Perfil</button>
         <button className={activeTab === "payments" ? "active" : ""} onClick={() => setActiveTab("payments")}><CreditCard size={18} /> Pagos</button>
         <button className={activeTab === "admin" ? "active" : ""} onClick={() => setActiveTab("admin")}><LayoutDashboard size={18} /> Admin</button>
         <button className="logout" onClick={() => setSession(null)}><LogOut size={18} /> Salir</button>
@@ -173,8 +174,9 @@ function App() {
           <span className="role"><ShieldCheck size={16} /> {session.user.role}</span>
         </header>
         {activeTab === "ride" && !isDriver && <RideView session={session} goTrack={() => setActiveTab("track")} />}
-        {activeTab === "track" && !isDriver && <TrackView session={session} />}
+        {activeTab === "track" && !isDriver && <TrackView session={session} goRide={() => setActiveTab("ride")} />}
         {(activeTab === "driver" || (isDriver && (activeTab === "ride" || activeTab === "track"))) && <DriverView session={session} />}
+        {activeTab === "profile" && <ProfileView session={session} onSession={setSession} />}
         {activeTab === "payments" && <PaymentsView session={session} initialStatus={initialPaymentRoute} />}
         {activeTab === "admin" && <AdminView session={session} />}
       </main>
@@ -456,6 +458,45 @@ function RideView({ session, goTrack }) {
   );
 }
 
+function ProfileView({ session, onSession }) {
+  const [form, setForm] = useState({
+    name: session.user.name || "",
+    email: session.user.email || "",
+    phone: session.user.phone || ""
+  });
+  const [message, setMessage] = useState("");
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      const data = await api("/api/auth/me", {
+        method: "PATCH",
+        token: session.token,
+        body: JSON.stringify(form)
+      });
+      onSession({ user: data.user, token: data.token }, localStorage.getItem("localride-remember") !== "false");
+      setMessage("Perfil actualizado.");
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  return (
+    <section className="panel profile-panel">
+      <p className="eyebrow">Cuenta</p>
+      <h2>Perfil</h2>
+      <form className="form-grid one" onSubmit={saveProfile}>
+        <label>Nombre<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+        <label>Email<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+        <label>Telefono<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Opcional" /></label>
+        <button className="primary">Guardar perfil</button>
+      </form>
+      {message && <p className={message.includes("actualizado") ? "ok" : "error"}>{message}</p>}
+    </section>
+  );
+}
+
 function AddressSearch({ label, value, onText, onSelect, action }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -651,7 +692,7 @@ function FitTrackingMap({ points, route }) {
   return null;
 }
 
-function TrackView({ session }) {
+function TrackView({ session, goRide }) {
   const [trip, setTrip] = useState(null);
   const [history, setHistory] = useState([]);
   const [location, setLocation] = useState(null);
@@ -719,13 +760,13 @@ function TrackView({ session }) {
     return () => ws.close();
   }, [trip?.id, session.token]);
 
-  async function updateStatus(status) {
+  async function updateStatus(status, cancellationReason) {
     setActionMessage("");
     try {
       const data = await api(`/api/trips/${trip.id}/status`, {
         method: "PATCH",
         token: session.token,
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, cancellationReason })
       });
       setTrip(data.trip);
       if (status === "completed") {
@@ -736,6 +777,15 @@ function TrackView({ session }) {
     } catch (err) {
       setActionMessage(err.message);
     }
+  }
+
+  async function cancelPassengerTrip() {
+    const reason = window.prompt(
+      "Politica de cancelacion: si el conductor ya va en camino puede aplicarse cargo segun la tarifa vigente. Indica el motivo:",
+      "Cancelado por el pasajero"
+    );
+    if (!reason) return;
+    await updateStatus("cancelled", reason);
   }
 
   async function openCheckout() {
@@ -766,7 +816,7 @@ function TrackView({ session }) {
           <EmptyState title="Sin viaje activo" text={error || "Crea un pedido para ver seguimiento en vivo."} />
         )}
         {session.user.role === "driver" && <DriverRequestsPanel session={session} onAccepted={setTrip} />}
-        <TripHistory trips={history} />
+        <TripHistory trips={history} onRepeat={session.user.role === "passenger" ? goRide : null} />
       </section>
     );
   }
@@ -790,14 +840,14 @@ function TrackView({ session }) {
         ) : trip.payment_method === "cash" ? (
           <div className="actions">
             <span className="cash-badge">Pago en efectivo al conductor</span>
-            <button className="secondary" onClick={() => updateStatus("cancelled")}>Cancelar viaje</button>
+            <button className="secondary" onClick={cancelPassengerTrip}>Cancelar viaje</button>
           </div>
         ) : (
           <div className="actions">
             <button className="primary" disabled={checkoutLoading} onClick={openCheckout}>
               {checkoutLoading ? "Abriendo pago..." : "Pagar con Mercado Pago"}
             </button>
-            <button className="secondary" onClick={() => updateStatus("cancelled")}>Cancelar viaje</button>
+            <button className="secondary" onClick={cancelPassengerTrip}>Cancelar viaje</button>
           </div>
         )}
         {actionMessage && <p className="error">{actionMessage}</p>}
@@ -819,13 +869,20 @@ function TrackView({ session }) {
           )}
           <dt>Ubicacion conductor</dt><dd>{driverApproachLabel(trip, location)}</dd>
         </dl>
+        {trip.driver_name && (
+          <div className="vehicle-card">
+            <span>Tu conductor</span>
+            <strong>{trip.driver_name}</strong>
+            <p>{vehicleLabel(trip)} · Patente {trip.plate}</p>
+          </div>
+        )}
       </div>
       <section className="panel tracking-map-panel">
         <p className="eyebrow">Mapa en vivo</p>
         <h2>{trackingMapLabel(trip, location)}</h2>
         <TrackingMap trip={trip} driverLocation={location} />
       </section>
-      <TripHistory trips={history} />
+      <TripHistory trips={history} onRepeat={session.user.role === "passenger" ? goRide : null} />
     </section>
   );
 }
@@ -857,6 +914,8 @@ function CompletedTripCard({ session, trip, onRated }) {
       <dl className="receipt">
         <dt>Origen</dt><dd>{trip.pickup_address}</dd>
         <dt>Destino</dt><dd>{trip.dropoff_address}</dd>
+        <dt>Distancia</dt><dd>{formatKm(trip.distance_meters)}</dd>
+        <dt>Pago</dt><dd>{paymentMethodLabel(trip.payment_method)}</dd>
         <dt>Total</dt><dd>{money(trip.fare_amount)}</dd>
       </dl>
       {session.user.role === "passenger" && (
@@ -990,7 +1049,23 @@ function DriverRequestCard({ request, onAccept, onReject }) {
   );
 }
 
-function TripHistory({ trips }) {
+function TripHistory({ trips, onRepeat }) {
+  function repeatTrip(trip) {
+    localStorage.setItem("localride-last-ride-points", JSON.stringify({
+      pickup: {
+        address: trip.pickup_address,
+        lat: Number(trip.pickup_lat || defaultCenter[0]),
+        lng: Number(trip.pickup_lng || defaultCenter[1])
+      },
+      dropoff: {
+        address: trip.dropoff_address,
+        lat: Number(trip.dropoff_lat || defaultCenter[0] + 0.012),
+        lng: Number(trip.dropoff_lng || defaultCenter[1] + 0.012)
+      }
+    }));
+    if (onRepeat) onRepeat();
+  }
+
   return (
     <div className="panel history-panel">
       <p className="eyebrow">Historial</p>
@@ -1006,6 +1081,7 @@ function TripHistory({ trips }) {
             <div>
               <strong>{money(trip.fare_amount)}</strong>
               <span>{Math.round(trip.distance_meters / 100) / 10} km</span>
+              {onRepeat && <button className="secondary compact-button" onClick={() => repeatTrip(trip)}>Repetir</button>}
             </div>
           </article>
         ))}
@@ -1018,8 +1094,10 @@ function DriverView({ session }) {
   const [online, setOnline] = useState(false);
   const [trip, setTrip] = useState(null);
   const [requests, setRequests] = useState([]);
+  const [earnings, setEarnings] = useState(null);
   const [message, setMessage] = useState("");
   const [lastLocationSync, setLastLocationSync] = useState(null);
+  const [arrivedAtPickup, setArrivedAtPickup] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
   const seenRequestIds = useRef(new Set());
@@ -1030,8 +1108,13 @@ function DriverView({ session }) {
     if (!disabled) {
       loadDriverProfile();
       loadDriverTrip();
+      loadDriverEarnings();
     }
   }, [disabled]);
+
+  useEffect(() => {
+    setArrivedAtPickup(false);
+  }, [trip?.id]);
 
   useEffect(() => {
     if (!disabled) {
@@ -1088,6 +1171,15 @@ function DriverView({ session }) {
     try {
       const data = await api("/api/trips/active", { token: session.token });
       setTrip(data.trip);
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
+  async function loadDriverEarnings() {
+    try {
+      const data = await api("/api/drivers/me/earnings", { token: session.token });
+      setEarnings(data);
     } catch (err) {
       setMessage(err.message);
     }
@@ -1182,6 +1274,7 @@ function DriverView({ session }) {
       }
       if (status === "completed") {
         setTrip(null);
+        await loadDriverEarnings();
       }
       setMessage(`Viaje actualizado: ${tripStatusLabel(status)}.`);
     } catch (err) {
@@ -1190,7 +1283,8 @@ function DriverView({ session }) {
   }
 
   return (
-    <section className="panel">
+    <section className="driver-layout">
+      <section className="panel">
       <p className="eyebrow">Conductores</p>
       <h2>{trip ? "Viaje en curso" : "Disponibilidad y pedidos"}</h2>
       {disabled ? <p>Tu usuario no tiene rol conductor.</p> : (
@@ -1226,13 +1320,21 @@ function DriverView({ session }) {
                 <button className="secondary" onClick={() => openNavigationTo(tripPoint(trip, "dropoff"))}>Ir al destino</button>
               </div>
               <div className="actions guided-actions">
-                {driverNextAction(trip).message ? (
+                {trip.status === "driver_arriving" ? (
+                  <>
+                    <button className="secondary" onClick={() => { setArrivedAtPickup(true); setMessage("Llegada al origen marcada. Cuando suba el pasajero, inicia el viaje."); }}>Llegue al origen</button>
+                    <button className="primary" disabled={!arrivedAtPickup} onClick={() => updateDriverTripStatus("in_progress")}>Iniciar viaje</button>
+                  </>
+                ) : driverNextAction(trip).message ? (
                   <span className="cash-badge">{driverNextAction(trip).message}</span>
                 ) : (
                   <button className="primary" onClick={() => updateDriverTripStatus(driverNextAction(trip).status)}>
                     {driverNextAction(trip).label}
                   </button>
                 )}
+              </div>
+              <div className="driver-trip-map">
+                <TrackingMap trip={trip} driverLocation={locationFromTrip(trip)} />
               </div>
             </section>
           ) : (
@@ -1248,6 +1350,43 @@ function DriverView({ session }) {
           {message && <p className={message.includes("No ") || message.includes("error") ? "error" : "ok"}>{message}</p>}
         </div>
       )}
+      </section>
+      <DriverEarningsPanel earnings={earnings} onRefresh={loadDriverEarnings} />
+    </section>
+  );
+}
+
+function DriverEarningsPanel({ earnings, onRefresh }) {
+  return (
+    <section className="panel">
+      <div className="section-row">
+        <div>
+          <p className="eyebrow">Ganancias</p>
+          <h2>Historial de cobros</h2>
+        </div>
+        <button className="secondary" onClick={onRefresh}>Actualizar</button>
+      </div>
+      <div className="finance-grid">
+        <article className="finance-card"><span>Neto conductor</span><strong>{money(earnings?.summary?.driverNet)}</strong><small>{earnings?.summary?.completedTrips || 0} viajes finalizados</small></article>
+        <article className="finance-card"><span>Efectivo</span><strong>{money(earnings?.summary?.cashAmount)}</strong><small>Cobrado al pasajero</small></article>
+        <article className="finance-card"><span>Mercado Pago</span><strong>{money(earnings?.summary?.mercadoPagoAmount)}</strong><small>A conciliar segun estado</small></article>
+        <article className="finance-card"><span>Comision</span><strong>{money(earnings?.summary?.platformFee)}</strong><small>Retencion plataforma</small></article>
+      </div>
+      <div className="history-list earnings-list">
+        {(earnings?.trips || []).map((trip) => (
+          <article className="history-item" key={trip.id}>
+            <div>
+              <strong>{trip.pickup_address} a {trip.dropoff_address}</strong>
+              <span>{formatDateTime(trip.completed_at)} · {paymentMethodLabel(trip.payment_method)} · {driverPaymentStateLabel(trip)}</span>
+            </div>
+            <div>
+              <strong>{money(Number(trip.fare_amount || 0) - Number(trip.platform_fee || 0))}</strong>
+              <span>Neto</span>
+            </div>
+          </article>
+        ))}
+        {(!earnings?.trips || earnings.trips.length === 0) && <p>Todavia no hay viajes finalizados.</p>}
+      </div>
     </section>
   );
 }
@@ -1676,6 +1815,14 @@ function paymentStatusLabel(value) {
   }[value] || value;
 }
 
+function driverPaymentStateLabel(trip) {
+  if (trip.payment_method === "cash") return "Efectivo cobrado";
+  if (trip.payment_status === "approved") return "Cobrado";
+  if (trip.payment_status === "rejected") return "Rechazado";
+  if (trip.payment_status === "refunded") return "Devuelto";
+  return "Pendiente";
+}
+
 function isActiveTrip(status) {
   return ["requested", "accepted", "driver_arriving", "in_progress"].includes(status);
 }
@@ -1716,7 +1863,7 @@ function trackingMapLabel(trip, location) {
 function driverNextAction(trip) {
   return {
     accepted: { status: "driver_arriving", label: "Voy al origen" },
-    driver_arriving: { status: "in_progress", label: "Llegue / Iniciar viaje" },
+    driver_arriving: { status: "in_progress", label: "Iniciar viaje" },
     in_progress: { status: "completed", label: "Finalizar viaje" },
     completed: { message: "Viaje finalizado" },
     cancelled: { message: "Viaje cancelado" }
