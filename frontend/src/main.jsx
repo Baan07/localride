@@ -306,8 +306,6 @@ function RideView({ session, goTrack }) {
   }
 
   async function refinePointFromBackend(point) {
-    const localStreetPlace = localStreetAddressPlace(point.address);
-    if (localStreetPlace) return placeToPoint(localStreetPlace);
     if (!shouldPreferGeocodedResults(point.address)) return point;
     const results = await searchRioColorado(point.address, [], []);
     const best = results.find((place) => !String(place.place_id || "").startsWith("local-"));
@@ -2092,9 +2090,6 @@ function readJsonStorage(storage, key) {
 
 async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query), frequentPlaces = []) {
   const parsedAddress = parseStreetNumber(query);
-  const localStreetPlace = localStreetAddressPlace(query);
-  if (localStreetPlace) return [localStreetPlace];
-
   const prefersGeocoded = shouldPreferGeocodedResults(query);
   const searches = buildLocalSearches(query);
   const localFallback = prefersGeocoded ? searchLocalSuggestions(query, frequentPlaces) : [];
@@ -2367,12 +2362,20 @@ function matchesPlaceQuery(place, normalizedQuery) {
 
 function placeMatchesParsedStreet(place, parsedAddress) {
   const address = place.address || {};
-  const road = address.road || address.pedestrian || address.footway || address.path || address.name || place.name || "";
+  const road = address.road || address.pedestrian || address.footway || address.path || address.name || "";
   const display = displayAddress(place);
   const expected = normalizeText(parsedAddress.street);
   const roadText = normalizeText(road);
   const displayText = normalizeText(display);
-  return roadText.includes(expected) || expected.includes(roadText) || displayText.includes(expected);
+  if (roadText) return streetTextMatches(roadText, expected);
+  return streetTextMatches(displayText, expected);
+}
+
+function streetTextMatches(candidate, expected) {
+  if (!candidate || !expected) return false;
+  if (candidate === expected || candidate.includes(expected) || expected.includes(candidate)) return true;
+  const expectedTokens = expected.split(/\s+/).filter((token) => token.length > 2);
+  return expectedTokens.length > 0 && expectedTokens.every((token) => candidate.includes(token));
 }
 
 function placeMatchesLocalSuggestion(place, localSuggestions, query) {
