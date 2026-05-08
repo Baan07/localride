@@ -23,8 +23,8 @@ const LOCAL_POPULAR_PLACES = [
     name: "La Anonima",
     label: "La Anonima - 9 de Julio 746 Rio Colorado",
     aliases: ["la anonima", "anonima", "anoni", "la anoni", "supermercado la anonima"],
-    lat: -38.98772,
-    lng: -64.09492
+    lat: -38.98832,
+    lng: -64.09719
   },
   {
     id: "cooperativa-obrera-rio-colorado",
@@ -84,7 +84,7 @@ const LOCAL_POPULAR_PLACES = [
   }
 ];
 const LOCAL_STREETS = [
-  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.99565, lng: -64.104 }, end: { lat: -38.9941, lng: -64.0848 }, anchors: [{ number: 299, lat: -38.9952, lng: -64.09705 }] },
+  { id: "sarmiento-rio-colorado", name: "Sarmiento", city: "Rio Colorado", aliases: ["sarmiento"], startNumber: 1, endNumber: 900, start: { lat: -38.9943, lng: -64.104 }, end: { lat: -38.9927, lng: -64.0848 }, anchors: [{ number: 299, lat: -38.99355, lng: -64.09705 }] },
   { id: "laprida-rio-colorado", name: "Laprida", city: "Rio Colorado", aliases: ["laprida"], startNumber: 1, endNumber: 1100, start: { lat: -38.99785, lng: -64.1042 }, end: { lat: -38.99665, lng: -64.0808 }, anchors: [{ number: 350, lat: -38.99745, lng: -64.09675 }] },
   { id: "san-martin-rio-colorado", name: "Avenida San Martin", city: "Rio Colorado", aliases: ["san martin", "avenida san martin", "av san martin"], startNumber: 1, endNumber: 1300, start: { lat: -38.9988, lng: -64.1053 }, end: { lat: -38.9937, lng: -64.0789 } },
   { id: "9-julio-rio-colorado", name: "9 de Julio", city: "Rio Colorado", aliases: ["9 de julio", "nueve de julio"], startNumber: 1, endNumber: 900, start: { lat: -38.9882, lng: -64.1056 }, end: { lat: -38.9851, lng: -64.0877 } },
