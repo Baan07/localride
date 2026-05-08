@@ -97,6 +97,9 @@ tripsRouter.post("/", requireAuth, requireRole("passenger", "admin"), asyncHandl
     return result.rows[0];
   });
 
+  await saveUserLocation({ userId: req.user.sub, point: input.pickup, kind: "pickup" });
+  await saveUserLocation({ userId: req.user.sub, point: input.dropoff, kind: "dropoff" });
+
   await audit({ actorId: req.user.sub, action: "trip.create", entityType: "trip", entityId: trip.id, metadata: { note: input.note || null }, ip: req.ip });
   broadcastTrip(trip.id, { type: "trip.updated", trip });
   res.status(201).json({ trip });
@@ -348,3 +351,30 @@ tripsRouter.post("/:id/location", requireAuth, requireRole("driver"), asyncHandl
   broadcastTrip(req.params.id, payload);
   res.status(201).json(payload);
 }));
+
+async function saveUserLocation({ userId, point, kind }) {
+  await query(
+    `WITH existing AS (
+       SELECT id
+       FROM user_locations
+       WHERE user_id = $1
+         AND lower(address) = lower($2)
+       LIMIT 1
+     )
+     UPDATE user_locations
+     SET use_count = use_count + 1,
+         last_used_at = now(),
+         kind = $3
+     WHERE id IN (SELECT id FROM existing)`,
+    [userId, point.address, kind]
+  );
+
+  await query(
+    `INSERT INTO user_locations(user_id, label, address, location, kind)
+     SELECT $1, $2, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5
+     WHERE NOT EXISTS (
+       SELECT 1 FROM user_locations WHERE user_id = $1 AND lower(address) = lower($2)
+     )`,
+    [userId, point.address, point.lng, point.lat, kind]
+  );
+}

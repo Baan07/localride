@@ -16,6 +16,7 @@ const serviceAreaViewbox = "-64.24,-38.88,-63.95,-39.10";
 const OSRM_URL = import.meta.env.VITE_OSRM_URL || "https://router.project-osrm.org";
 const BRAND_NAME = "Rio Movil";
 const BRAND_LOGO = "/rio-movil-logo.png";
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
 const LOCAL_POPULAR_PLACES = [
   {
     id: "la-anonima-rio-colorado",
@@ -265,6 +266,7 @@ function RideView({ session, goTrack }) {
   const savedRidePoints = loadSavedRidePoints();
   const [pickup, setPickup] = useState(savedRidePoints?.pickup || { address: "Plaza principal", lat: defaultCenter[0], lng: defaultCenter[1] });
   const [dropoff, setDropoff] = useState(savedRidePoints?.dropoff || { address: "Terminal", lat: defaultCenter[0] + 0.012, lng: defaultCenter[1] + 0.012 });
+  const [frequentLocations, setFrequentLocations] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [estimate, setEstimate] = useState(null);
   const [route, setRoute] = useState(null);
@@ -277,6 +279,9 @@ function RideView({ session, goTrack }) {
   useEffect(() => {
     refreshNearby();
     refreshEstimate();
+    api("/api/geo/frequent", { token: session.token })
+      .then((data) => setFrequentLocations((data.locations || []).map(frequentLocationToPlace)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -418,13 +423,14 @@ function RideView({ session, goTrack }) {
             value={pickup.address}
             onText={(address) => setPickup({ ...pickup, address })}
             onSelect={selectPickup}
+            frequentPlaces={frequentLocations}
             action={(
               <button type="button" className="location-button" disabled={locatingPickup} onClick={useCurrentLocationAsPickup}>
                 <LocateFixed size={16} /> {locatingPickup ? "Ubicando..." : "Usar mi ubicacion"}
               </button>
             )}
           />
-          <AddressSearch label="Destino" value={dropoff.address} onText={(address) => setDropoff({ ...dropoff, address })} onSelect={selectDropoff} />
+          <AddressSearch label="Destino" value={dropoff.address} onText={(address) => setDropoff({ ...dropoff, address })} onSelect={selectDropoff} frequentPlaces={frequentLocations} />
           <label>
             Tipo de coche
             <select value={carType} onChange={(event) => setCarType(event.target.value)}>
@@ -497,7 +503,7 @@ function ProfileView({ session, onSession }) {
   );
 }
 
-function AddressSearch({ label, value, onText, onSelect, action }) {
+function AddressSearch({ label, value, onText, onSelect, action, frequentPlaces = [] }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -517,11 +523,11 @@ function AddressSearch({ label, value, onText, onSelect, action }) {
     const timer = setTimeout(async () => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const localResults = shouldPreferGeocodedResults(value) ? [] : searchLocalSuggestions(value);
+      const localResults = shouldPreferGeocodedResults(value) ? [] : searchLocalSuggestions(value, frequentPlaces);
       setResults(localResults);
       setLoading(localResults.length === 0);
       try {
-        const nextResults = await searchRioColorado(value, localResults);
+        const nextResults = await searchRioColorado(value, localResults, frequentPlaces);
         if (requestIdRef.current === requestId) setResults(nextResults);
       } catch {
         if (requestIdRef.current === requestId && localResults.length === 0) setResults([]);
@@ -1099,6 +1105,7 @@ function DriverView({ session }) {
   const [lastLocationSync, setLastLocationSync] = useState(null);
   const [arrivedAtPickup, setArrivedAtPickup] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [pushMessage, setPushMessage] = useState("");
   const soundEnabledRef = useRef(false);
   const seenRequestIds = useRef(new Set());
   const didInitialLoad = useRef(false);
@@ -1295,6 +1302,7 @@ function DriverView({ session }) {
           <button className="secondary" onClick={loadDriverTrip}>Actualizar pedido</button>
           <button className="secondary" disabled={!online} onClick={() => loadRequests(true)}>Ver pedidos</button>
           <button className="secondary" disabled={!online} onClick={enableSound}>{soundEnabled ? "Sonido activo" : "Activar sonido"}</button>
+          <button className="secondary" disabled={!online} onClick={() => enablePushNotifications(session, setPushMessage)}>Activar push celular</button>
           <button className="secondary" disabled={!online && !trip} onClick={() => sendCurrentDriverLocation()}>Enviar ubicacion ahora</button>
           <p>
             La ubicacion se actualiza automaticamente cada 15 segundos mientras estes online o con viaje activo.
@@ -1348,6 +1356,7 @@ function DriverView({ session }) {
           </div>
           )}
           {message && <p className={message.includes("No ") || message.includes("error") ? "error" : "ok"}>{message}</p>}
+          {pushMessage && <p className={pushMessage.includes("requiere") || pushMessage.includes("No ") ? "error" : "ok"}>{pushMessage}</p>}
         </div>
       )}
       </section>
@@ -1441,6 +1450,7 @@ function AdminView({ session }) {
   const [fareRule, setFareRule] = useState(null);
   const [paymentSummary, setPaymentSummary] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [errorLogs, setErrorLogs] = useState([]);
   const [message, setMessage] = useState("");
   const [userActionMessage, setUserActionMessage] = useState("");
   const [driverDrafts, setDriverDrafts] = useState({});
@@ -1454,13 +1464,14 @@ function AdminView({ session }) {
   async function loadAdminData() {
     setMessage("");
     try {
-      const [dashboardData, usersData, tripsData, fareData, paymentData, auditData] = await Promise.all([
+      const [dashboardData, usersData, tripsData, fareData, paymentData, auditData, errorData] = await Promise.all([
         api("/api/admin/dashboard", { token: session.token }),
         api("/api/admin/users", { token: session.token }),
         api("/api/admin/trips", { token: session.token }),
         api("/api/admin/fare-rules", { token: session.token }),
         api("/api/admin/payments-summary", { token: session.token }),
-        api("/api/admin/audit", { token: session.token })
+        api("/api/admin/audit", { token: session.token }),
+        api("/api/admin/errors", { token: session.token })
       ]);
       setDashboard(dashboardData);
       setUsers(usersData.users || []);
@@ -1468,6 +1479,7 @@ function AdminView({ session }) {
       setFareRule(fareData.fareRule);
       setPaymentSummary(paymentData);
       setAuditLogs(auditData.logs || []);
+      setErrorLogs(errorData.errors || []);
       setDriverDrafts((current) => {
         const next = { ...current };
         for (const user of usersData.users || []) {
@@ -1645,6 +1657,26 @@ function AdminView({ session }) {
           </div>
         </section>
       </div>
+
+      <section className="panel">
+        <div className="section-row">
+          <div>
+            <p className="eyebrow">Confiabilidad</p>
+            <h2>Errores recientes</h2>
+          </div>
+          <button className="secondary" onClick={loadAdminData}>Actualizar</button>
+        </div>
+        <div className="audit-list">
+          {errorLogs.slice(0, 10).map((log) => (
+            <article className="audit-item error-log-item" key={log.id}>
+              <strong>{log.status} · {log.method || ""} {log.path || ""}</strong>
+              <span>{log.message}</span>
+              <span>{log.actor_name || "Sin usuario"} · {formatDateTime(log.created_at)}</span>
+            </article>
+          ))}
+          {errorLogs.length === 0 && <p>No hay errores recientes registrados.</p>}
+        </div>
+      </section>
 
       <div className="grid two">
         <section className="panel">
@@ -1981,6 +2013,45 @@ function auditActionLabel(value) {
   }[value] || value;
 }
 
+async function enablePushNotifications(session, setMessage) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    setMessage("Este navegador no soporta notificaciones push.");
+    return;
+  }
+  if (!VAPID_PUBLIC_KEY) {
+    setMessage("Push real requiere configurar VITE_VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY.");
+    return;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      setMessage("No se otorgo permiso para notificaciones.");
+      return;
+    }
+    const registration = await navigator.serviceWorker.register("/push-sw.js");
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    await api("/api/geo/push-subscriptions", {
+      method: "POST",
+      token: session.token,
+      body: JSON.stringify({ subscription })
+    });
+    setMessage("Notificaciones push activadas en este dispositivo.");
+  } catch (err) {
+    setMessage(err.message);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 function loadStoredSession() {
   return readJsonStorage(localStorage, "localride-session") || readJsonStorage(sessionStorage, "localride-session") || null;
 }
@@ -2002,11 +2073,11 @@ function readJsonStorage(storage, key) {
   }
 }
 
-async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query)) {
+async function searchRioColorado(query, localPlaces = searchLocalSuggestions(query), frequentPlaces = []) {
   const parsedAddress = parseStreetNumber(query);
   const prefersGeocoded = shouldPreferGeocodedResults(query);
   const searches = buildLocalSearches(query);
-  const localFallback = prefersGeocoded ? searchLocalSuggestions(query) : [];
+  const localFallback = prefersGeocoded ? searchLocalSuggestions(query, frequentPlaces) : [];
 
   const structuredSearches = parsedAddress ? [
     structuredAddressParams(parsedAddress, "Rio Colorado", "Rio Negro"),
@@ -2062,8 +2133,28 @@ function searchLocalPopularPlaces(query) {
     }));
 }
 
-function searchLocalSuggestions(query) {
-  return [...searchLocalPopularPlaces(query), ...searchLocalStreets(query)].slice(0, 8);
+function searchFrequentLocations(query, frequentPlaces) {
+  const normalizedQuery = normalizeText(query.trim());
+  if (normalizedQuery.length < 3) return [];
+  return frequentPlaces.filter((place) => normalizeText(place.localride_label || place.name || "").includes(normalizedQuery)).slice(0, 4);
+}
+
+function frequentLocationToPlace(location) {
+  return {
+    place_id: `frequent-${location.id}`,
+    lat: String(location.lat),
+    lon: String(location.lng),
+    localride_label: location.address,
+    name: location.label || location.address,
+    address: {
+      road: location.address,
+      town: "Rio Colorado"
+    }
+  };
+}
+
+function searchLocalSuggestions(query, frequentPlaces = []) {
+  return [...searchFrequentLocations(query, frequentPlaces), ...searchLocalPopularPlaces(query), ...searchLocalStreets(query)].slice(0, 8);
 }
 
 function shouldPreferGeocodedResults(query) {
@@ -2286,17 +2377,14 @@ function structuredAddressParams(parsedAddress, city, state) {
 async function searchAddress(input) {
   const params = input instanceof URLSearchParams ? input : new URLSearchParams({
     q: input,
-    format: "jsonv2",
-    addressdetails: "1",
-    namedetails: "1",
-    countrycodes: "ar",
-    viewbox: serviceAreaViewbox,
-    bounded: "1",
     limit: "5"
   });
-  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+  const response = await fetch(`${API_URL}/api/geo/search?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${loadStoredSession()?.token || ""}` }
+  });
   if (!response.ok) throw new Error("No se pudo buscar la direccion");
-  return response.json();
+  const data = await response.json();
+  return data.results || [];
 }
 
 async function fetchRoute(pickup, dropoff) {

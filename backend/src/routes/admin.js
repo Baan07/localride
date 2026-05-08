@@ -106,6 +106,19 @@ adminRouter.get("/audit", requireAuth, requireRole("admin"), asyncHandler(async 
   res.json({ logs: result.rows });
 }));
 
+adminRouter.get("/errors", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT
+       e.id, e.method, e.path, e.status, e.message, e.user_agent, e.created_at,
+       u.name AS actor_name, u.email AS actor_email
+     FROM error_logs e
+     LEFT JOIN users u ON u.id = e.actor_id
+     ORDER BY e.created_at DESC
+     LIMIT 80`
+  );
+  res.json({ errors: result.rows });
+}));
+
 adminRouter.get("/trips/export", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT

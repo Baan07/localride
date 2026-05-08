@@ -156,6 +156,57 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS geocode_cache (
+  cache_key text PRIMARY KEY,
+  query text NOT NULL,
+  provider text NOT NULL DEFAULT 'nominatim',
+  results jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT now() + interval '30 days'
+);
+
+CREATE INDEX IF NOT EXISTS geocode_cache_expires_idx ON geocode_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS user_locations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label text NOT NULL,
+  address text NOT NULL,
+  location geography(Point, 4326) NOT NULL,
+  kind text NOT NULL DEFAULT 'recent',
+  use_count integer NOT NULL DEFAULT 1,
+  last_used_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS user_locations_user_idx ON user_locations(user_id, last_used_at DESC);
+CREATE INDEX IF NOT EXISTS user_locations_location_idx ON user_locations USING gist(location);
+
+CREATE TABLE IF NOT EXISTS error_logs (
+  id bigserial PRIMARY KEY,
+  actor_id uuid REFERENCES users(id),
+  method text,
+  path text,
+  status integer NOT NULL,
+  message text NOT NULL,
+  stack text,
+  ip inet,
+  user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS error_logs_created_idx ON error_logs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subscription jsonb NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, subscription)
+);
+
 INSERT INTO fare_rules(city, base_fare, minimum_fare, price_per_km, price_per_minute, platform_fee_percent)
 VALUES ('Mi localidad', 900, 1500, 420, 80, 12)
 ON CONFLICT DO NOTHING;

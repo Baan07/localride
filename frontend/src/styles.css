@@ -449,6 +449,9 @@ select {
   font-size: 13px;
   margin-top: 3px;
 }
+.error-log-item strong {
+  color: #9f1d1d;
+}
 .section-row {
   display: flex;
   align-items: center;

@@ -10,6 +10,8 @@ import { driversRouter } from "./routes/drivers.js";
 import { tripsRouter } from "./routes/trips.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { adminRouter } from "./routes/admin.js";
+import { geoRouter } from "./routes/geo.js";
+import { pool, query } from "./db.js";
 
 export function createApp() {
   const app = express();
@@ -34,11 +36,31 @@ export function createApp() {
   app.use(morgan("dev"));
   app.use(rateLimit({ windowMs: 60_000, max: 240 }));
 
-  app.get("/health", (req, res) => res.json({ ok: true, service: "localride-api" }));
+  app.get("/health", async (req, res) => {
+    const started = Date.now();
+    try {
+      await query("SELECT 1");
+      res.json({
+        ok: true,
+        service: "rio-movil-api",
+        env: config.nodeEnv,
+        database: "ok",
+        pool: {
+          total: pool.totalCount,
+          idle: pool.idleCount,
+          waiting: pool.waitingCount
+        },
+        latencyMs: Date.now() - started
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, service: "rio-movil-api", database: "error", error: err.message });
+    }
+  });
   app.use("/api/auth", authRouter);
   app.use("/api/drivers", driversRouter);
   app.use("/api/trips", tripsRouter);
   app.use("/api/payments", paymentsRouter);
+  app.use("/api/geo", geoRouter);
   app.use("/api/admin", adminRouter);
 
   app.use((req, res, next) => next(notFound()));
